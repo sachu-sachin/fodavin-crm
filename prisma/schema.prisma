@@ -1,0 +1,476 @@
+// Fodavin Business OS — Prisma schema
+// Prisma owns the `public` tables + enums. Supabase-specific wiring
+// (FK to auth.users, the profile-on-signup trigger, is_admin(), RLS,
+// updated_at triggers) lives in supabase/setup.sql and is applied on top.
+//
+// Field names are kept snake_case to match the DB columns and the app's
+// existing domain types (src/lib/types.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// -- Enums (tailored to web / app development work) --------------------------
+
+enum InquiryStage {
+  new
+  contacted
+  proposal_sent
+  won
+  lost
+}
+
+enum InquiryType {
+  website
+  web_app
+  mobile_app
+  ecommerce
+  branding
+  maintenance
+  other
+}
+
+enum InquirySource {
+  referral
+  website
+  social
+  cold_outreach
+  marketplace
+  repeat_client
+  event
+  other
+}
+
+enum ProjectType {
+  website
+  web_app
+  mobile_app
+  ecommerce
+  branding
+  maintenance
+}
+
+enum ProjectPhase {
+  discovery
+  design
+  development
+  qa
+  launch
+  maintenance
+}
+
+enum ProjectStatus {
+  active
+  on_hold
+  completed
+  archived
+}
+
+/// Where a document actually lives. `upload` is a file in the private
+/// Supabase Storage bucket; `drive` and `link` are external URLs we only
+/// point at (no copy is made, so access stays governed by the source).
+enum DocumentSource {
+  /// File in the private Supabase Storage bucket (small files).
+  upload
+  /// File WE uploaded into the agency's Google Drive — we own it and can
+  /// delete it. Used for anything above the Supabase size cap.
+  drive_upload
+  /// A Drive file that already existed; we only store a pointer to it and
+  /// must never delete it.
+  drive
+  link
+}
+
+enum DocumentKind {
+  proposal
+  contract
+  invoice
+  design
+  spec
+  handover
+  other
+}
+
+/// Lifecycle of one payment stage. Invoicing/accounting itself lives in the
+/// external books (Zoho Books) — this only tracks what the client owes us.
+enum MilestoneStatus {
+  pending
+  invoiced
+  paid
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  review
+  done
+}
+
+enum TaskType {
+  design
+  frontend
+  backend
+  bug
+  content
+  devops
+  general
+}
+
+enum SocialPlatform {
+  instagram
+  facebook
+  linkedin
+  twitter
+  tiktok
+  youtube
+  other
+}
+
+enum PostStatus {
+  idea
+  draft
+  needs_approval
+  scheduled
+  published
+  cancelled
+}
+
+enum PostCategory {
+  brand_awareness
+  services
+  educational
+  interactive
+  fun
+  promotion
+  testimonial
+}
+
+// -- Models -------------------------------------------------------------------
+
+model Role {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String    @unique
+  /// Super-flag: implies every permission, regardless of the array below.
+  /// Guarantees a way back in if a role's permissions are mis-edited.
+  is_admin    Boolean   @default(false)
+  /// Granted permission strings — see src/lib/permissions.ts for the
+  /// catalogue. Unknown values are ignored when the set is expanded.
+  permissions String[]  @default([])
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  profiles    Profile[]
+
+  @@map("roles")
+}
+
+/// 1:1 with auth.users (FK added in supabase/setup.sql).
+model Profile {
+  id         String   @id @db.Uuid
+  full_name  String?
+  email      String?
+  avatar_url String?
+  role_id    String?  @db.Uuid
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  role           Role?        @relation(fields: [role_id], references: [id], onDelete: SetNull)
+  assigned_tasks Task[]       @relation("TaskAssignee")
+  assigned_posts SocialPost[] @relation("PostAssignee")
+  time_entries   TimeEntry[]
+
+  @@index([role_id])
+  @@map("profiles")
+}
+
+model Company {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  website    String?
+  industry   String?
+  /// 15-character GST identification number, needed on Indian invoices.
+  gstin      String?
+  notes      String?
+  created_by String?  @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  contacts     Contact[]
+  inquiries    Inquiry[]
+  projects     Project[]
+  social_posts SocialPost[]
+  documents    Document[]
+
+  @@map("companies")
+}
+
+model Contact {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  company_id String?  @db.Uuid
+  full_name  String
+  email      String?
+  phone      String?
+  role_title String?
+  notes      String?
+  created_by String?  @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  company   Company?  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  inquiries Inquiry[]
+
+  @@index([company_id])
+  @@map("contacts")
+}
+
+model Inquiry {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title          String
+  company_id     String?        @db.Uuid
+  contact_id     String?        @db.Uuid
+  /// Free-text fallback for leads whose contact isn't in the directory yet.
+  contact_name   String?
+  type           InquiryType    @default(website)
+  /// Where the lead came from — drives "which channels actually convert".
+  source         InquirySource?
+  budget         Decimal?       @db.Decimal(12, 2)
+  stage          InquiryStage   @default(new)
+  position       Int            @default(0)
+  /// Next touchpoint. An open inquiry past this date is an overdue follow-up.
+  next_follow_up DateTime?      @db.Date
+  /// Why a lead was lost — only meaningful on the `lost` stage.
+  lost_reason    String?
+  notes          String?
+  created_by     String?        @db.Uuid
+  created_at     DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime       @default(now()) @db.Timestamptz(6)
+
+  company  Company?  @relation(fields: [company_id], references: [id], onDelete: SetNull)
+  contact  Contact?  @relation(fields: [contact_id], references: [id], onDelete: SetNull)
+  projects Project[]
+
+  @@index([stage])
+  @@index([company_id])
+  @@index([contact_id])
+  @@index([next_follow_up])
+  @@map("inquiries")
+}
+
+model Project {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  type             ProjectType   @default(website)
+  company_id       String?       @db.Uuid
+  /// Set when the project was converted from a won inquiry (quote vs. actual).
+  inquiry_id       String?       @db.Uuid
+  description      String?
+  phase            ProjectPhase  @default(discovery)
+  status           ProjectStatus @default(active)
+  tech_stack       String[]      @default([])
+  repo_url         String?
+  staging_url      String?
+  production_url   String?
+  domain           String?
+  registrar        String?
+  hosting_provider String?
+  /// Renewal dates. A lapsed domain takes the client's site down, so these
+  /// drive the dashboard's renewal warnings — and double as a prompt to sell
+  /// a maintenance retainer.
+  domain_expiry    DateTime?     @db.Date
+  hosting_expiry   DateTime?     @db.Date
+  budget           Decimal?      @db.Decimal(12, 2)
+  start_date       DateTime?     @db.Date
+  launch_date      DateTime?     @db.Date
+  created_by       String?       @db.Uuid
+  created_at       DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime      @default(now()) @db.Timestamptz(6)
+
+  company      Company?           @relation(fields: [company_id], references: [id], onDelete: SetNull)
+  inquiry      Inquiry?           @relation(fields: [inquiry_id], references: [id], onDelete: SetNull)
+  tasks        Task[]
+  milestones   PaymentMilestone[]
+  documents    Document[]
+  time_entries TimeEntry[]
+
+  @@index([company_id])
+  @@index([inquiry_id])
+  @@index([phase])
+  @@map("projects")
+}
+
+model Task {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id  String?    @db.Uuid
+  title       String
+  description String?
+  type        TaskType   @default(general)
+  status      TaskStatus @default(todo)
+  assignee_id String?    @db.Uuid
+  position    Int        @default(0)
+  due_date    DateTime?  @db.Date
+  created_by  String?    @db.Uuid
+  created_at  DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime   @default(now()) @db.Timestamptz(6)
+
+  project  Project? @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  assignee Profile? @relation("TaskAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
+
+  @@index([project_id])
+  @@index([assignee_id])
+  @@index([status])
+  @@map("tasks")
+}
+
+/// The single agency Google account that Drive uploads are written to.
+///
+/// One row, ever (enforced by `singleton`). An admin connects it once via
+/// OAuth; every employee's uploads then land in that account's Drive folder,
+/// so files survive staff changes instead of living in someone's personal
+/// Drive.
+///
+/// SECURITY: `refresh_token_encrypted` is AES-256-GCM ciphertext, never the
+/// raw token. It is read only by server code, never serialised to a client
+/// component, and never logged. Losing GOOGLE_TOKEN_ENC_KEY means the token
+/// is unrecoverable — which is the intended failure mode.
+model GoogleAccount {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Always true; the unique index makes a second row impossible.
+  singleton Boolean @unique @default(true)
+
+  email                   String
+  refresh_token_encrypted String
+  /// Drive folder all uploads are filed under.
+  folder_id               String?
+  folder_name             String?
+  /// Scopes actually granted, so we can warn if Google returns fewer.
+  granted_scopes          String?
+
+  connected_by String?  @db.Uuid
+  connected_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("google_accounts")
+}
+
+/// A file or external link attached to a client or a project.
+/// Uploads live in the private `documents` Storage bucket and are only ever
+/// served through short-lived signed URLs generated by /api/documents/[id].
+model Document {
+  id     String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name   String
+  source DocumentSource
+  kind   DocumentKind   @default(other)
+
+  /// Bucket-relative object path. Set only when source = upload.
+  storage_path  String?
+  /// Absolute URL. Set only when source = drive | link.
+  url           String?
+  /// Google Drive / Docs file id — parsed out of `url` for linked files, or
+  /// returned by the API for files we uploaded.
+  drive_file_id String?
+
+  mime_type  String?
+  size_bytes Int?
+
+  company_id String? @db.Uuid
+  project_id String? @db.Uuid
+
+  notes       String?
+  uploaded_by String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  company Company? @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@index([company_id])
+  @@index([project_id])
+  @@map("documents")
+}
+
+/// Hours one person logged against one project on one day.
+///
+/// Deliberately project-level, not task-level: the entry grid is
+/// projects × days, so a task dimension couldn't be represented in the UI
+/// and — going on how timesheets actually get filled in — would mostly sit
+/// empty. Combined with Project.budget this yields an effective hourly rate,
+/// which is the profitability signal a small agency can act on.
+///
+/// The (person, project, day) uniqueness makes each grid cell exactly one
+/// row, so editing is an upsert rather than an append-and-reconcile.
+model TimeEntry {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id String   @db.Uuid
+  project_id String   @db.Uuid
+  work_date  DateTime @db.Date
+  hours      Decimal  @db.Decimal(5, 2)
+  note       String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@unique([profile_id, project_id, work_date])
+  @@index([project_id])
+  @@index([work_date])
+  @@map("time_entries")
+}
+
+/// One payment stage of a project (advance / mid / final / retainer month).
+/// Answers "who owes us what" without trying to be an accounting system.
+model PaymentMilestone {
+  id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id String          @db.Uuid
+  label      String
+  amount     Decimal         @db.Decimal(12, 2)
+  status     MilestoneStatus @default(pending)
+  /// When the client is expected to pay. Unpaid + past this = chase it.
+  due_date   DateTime?       @db.Date
+  /// Set automatically when the milestone is marked paid.
+  paid_on    DateTime?       @db.Date
+  invoice_no String?
+  notes      String?
+  position   Int             @default(0)
+  created_by String?         @db.Uuid
+  created_at DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at DateTime        @default(now()) @db.Timestamptz(6)
+
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@index([project_id])
+  @@index([status])
+  @@index([due_date])
+  @@map("payment_milestones")
+}
+
+/// Internal operations: social media / content planning, scheduling & reminders.
+model SocialPost {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title        String
+  content      String?
+  platform     SocialPlatform @default(instagram)
+  category     PostCategory?
+  status       PostStatus     @default(idea)
+  company_id   String?        @db.Uuid
+  assignee_id  String?        @db.Uuid
+  scheduled_at DateTime?      @db.Timestamptz(6)
+  reminder_at  DateTime?      @db.Timestamptz(6)
+  link_url     String?
+  notes        String?
+  created_by   String?        @db.Uuid
+  created_at   DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime       @default(now()) @db.Timestamptz(6)
+
+  company  Company? @relation(fields: [company_id], references: [id], onDelete: SetNull)
+  assignee Profile? @relation("PostAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([assignee_id])
+  @@index([scheduled_at])
+  @@map("social_posts")
+}

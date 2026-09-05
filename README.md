@@ -1,36 +1,153 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Fodavin Business OS
 
-## Getting Started
+A lean, zero-cost CRM + Project/Task manager for the Fodavin agency.
+See the full plan in [docs/Fodavin_Business_OS_Master_Plan.md](docs/Fodavin_Business_OS_Master_Plan.md).
 
-First, run the development server:
+A tool for a **website & app development agency** — every module is shaped
+around dev delivery (typed projects, dev lifecycle, repo/staging/live URLs,
+task disciplines) rather than a generic CRM.
+
+## Stack
+
+- **Next.js 16** (App Router) + **TypeScript**
+- **Tailwind CSS 4** + **shadcn/ui**
+- **Prisma 6** — ORM for all application data access
+- **Supabase** — Auth (email + password), Postgres, Row Level Security
+- **Vercel** for hosting (free tier)
+
+### Localization
+
+India-first: all dates/times render in **IST (Asia/Kolkata)** and money in **₹ INR** (`en-IN`), centralised in [src/lib/format.ts](src/lib/format.ts). Formatting uses a fixed timezone + locale, so server and client output match exactly (no hydration mismatches) and scheduled times are correct regardless of where the server runs.
+
+### Data architecture
+
+- **Supabase = identity + safety net.** Handles login/sessions. RLS stays enabled on every table to protect the public `anon` key at the PostgREST layer.
+- **Prisma = all app data access.** Connects as the `postgres` role via the pooler (bypasses RLS), so authorization is enforced in server code (`requireAdmin` / `getSessionProfile`).
+- Prisma owns the tables/columns/enums; Supabase-specific wiring (auth FK, profile-on-signup trigger, `is_admin()`, RLS, `updated_at`) lives in [supabase/setup.sql](supabase/setup.sql).
+
+## Access model
+
+- **Admin-only** account creation: an admin creates employees (email + password); they log in directly. No public sign-up.
+- **Admin-defined roles**, managed in-app. A role may carry the admin flag.
+- **"Admin vs. team"**: admins manage employees/roles/settings; every other employee has full access to clients, inquiries, projects and tasks.
+- **Offboarding:** deactivating an employee flips `is_active` *and* bans the Supabase auth user, so existing sessions stop working on the next request (they land on `/login?reason=deactivated`) and they can't sign in again. Admins can't deactivate themselves.
+- **Password resets** are admin-driven from **Employees → Reset password**; there is no self-serve reset flow.
+
+## Getting started
+
+### 1. Create a Supabase project
+
+1. Go to [supabase.com/dashboard](https://supabase.com/dashboard) and create a free project.
+2. In **Settings → API**, copy the **Project URL**, **anon public key**, and **service_role key**.
+3. In **Settings → Database → Connection string**, copy the **Transaction** pooler URL (port 6543) and the **Session** pooler URL (port 5432).
+4. Fill all of these into `.env.local` (see [.env.example](.env.example)):
+
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=https://your-ref.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   DATABASE_URL="postgresql://…:6543/postgres?pgbouncer=true"
+   DIRECT_URL="postgresql://…:5432/postgres"
+   ```
+
+   > The service-role key is server-only and must never be exposed to the browser.
+
+### 2. Create the schema, apply Supabase wiring, and seed
+
+```bash
+npm install       # runs `prisma generate`
+npm run db:push   # create tables/enums in Supabase (Prisma)
+npm run db:setup  # apply supabase/setup.sql (auth trigger, is_admin, RLS, updated_at)
+npm run db:seed   # seed the default roles
+```
+
+> `db:setup` runs [supabase/setup.sql](supabase/setup.sql) via Prisma. If the pooler
+> rejects it, just paste that file into the Supabase **SQL Editor** instead.
+
+### 3. Disable public sign-ups & create the first admin
+
+1. In Supabase **Authentication → Providers → Email**, turn **off** "Allow new users to sign up" (accounts are admin-created).
+2. Bootstrap the first admin (needs the service-role key in `.env.local`):
+
+   ```bash
+   node --env-file=.env.local scripts/create-admin.mjs admin@fodavin.com "StrongPassword123" "Founder Name"
+   ```
+
+### 4. Run the app
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) and sign in with the admin
+email + password. From **Employees** you can create the rest of the team and
+assign roles; manage the role list under **Roles**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+  app/
+    (app)/            Protected app shell + module pages
+      page.tsx        Dashboard
+      crm/ pipeline/ projects/ tasks/ social/ team/
+      employees/ roles/   Admin-only management
+    login/            Email + password sign-in
+    auth/callback/    OAuth callback (ready for future social login)
+  components/         Shell + admin managers + dialogs/boards + shadcn/ui
+  lib/
+    prisma.ts         Prisma client singleton (data access)
+    supabase/         Browser / server / proxy / admin (service-role) clients
+    actions/          Server actions (auth, admin, crm, projects, social)
+    auth.ts           Session + admin guards
+    types.ts          Domain types + display labels
+prisma/
+  schema.prisma       Models, enums, relations
+  seed.mjs            Default roles
+scripts/create-admin.mjs   First-admin bootstrap
+supabase/setup.sql         Auth triggers (create/delete), is_admin(), RLS, updated_at
+```
 
-## Learn More
+### Handy scripts
 
-To learn more about Next.js, take a look at the following resources:
+| Command | What it does |
+|---------|--------------|
+| `npm run db:push` | Sync the Prisma schema to the database |
+| `npm run db:setup` | Apply `supabase/setup.sql` (auth + RLS) |
+| `npm run db:seed` | Seed default roles |
+| `npm run db:studio` | Open Prisma Studio |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploy to Vercel
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Push this repo to GitHub, then **Import Project** in Vercel (framework auto-detected as Next.js).
+2. Add the following **Environment Variables** (Project → Settings → Environment Variables), for Production and Preview:
 
-## Deploy on Vercel
+   | Variable | Notes |
+   |----------|-------|
+   | `NEXT_PUBLIC_SUPABASE_URL` | Public |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public |
+   | `SUPABASE_SERVICE_ROLE_KEY` | **Secret** — server only |
+   | `DATABASE_URL` | Transaction pooler (`:6543`, `?pgbouncer=true`) — used at runtime |
+   | `DIRECT_URL` | Session pooler (`:5432`) |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+3. **Build command** — the default (`npm run build`) already runs `prisma generate` first, so no change needed. `postinstall` also generates the client.
+4. The database schema is managed from your machine (`npm run db:push` / `db:setup` / `db:seed`) against the same Supabase project — Vercel does not run migrations.
+5. In Supabase **Authentication → URL Configuration**, add your Vercel domain to **Redirect URLs** (for the OAuth callback, if you later enable social login).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> Serverless (Vercel) connects through the **transaction pooler** (`DATABASE_URL`), which is the correct mode for short-lived function connections.
+
+## Roadmap
+
+- [x] **Phase 1 — Foundation + Access Control:** scaffold, password auth, admin-only Employees & Roles, RLS, app shell, dashboard, team
+- [x] **Phase 2 — CRM Core:** companies/contacts CRUD, project-inquiries Kanban (drag-and-drop)
+- [x] **Phase 10 — Renewals + dashboard:** projects carry **domain** and **hosting expiry** dates, surfaced on the project page and on a dashboard **Renewals due** card (30-day window, archived projects excluded) so a client's site can't quietly go dark. The dashboard is now four actionable cards — my tasks this week, renewals, follow-ups and money outstanding — instead of counts alone.
+- [x] **Phase 9 — Timesheets:** a weekly **projects × days** grid at `/timesheet` that saves as you type (accepts `7`, `7.5` or `7:30`), with week navigation and "copy last week". Everyone edits their own sheet; admins can view and correct anyone's. Each project page gains a **Time** card showing hours logged and the **effective hourly rate** (budget ÷ hours, and received ÷ hours once milestones are paid) — profitability without needing any salary data.
+- [x] **Phase 8 — Direct Drive uploads:** files over 10MB upload **browser → Google Drive** via a resumable session, so large files never pass through the server; smaller files keep using the Supabase bucket. Admin connects one agency Google account under **Settings**; the refresh token is AES-256-GCM encrypted at rest and the app requests only the `drive.file` scope. Setup + security model: [docs/google-drive-setup.md](docs/google-drive-setup.md).
+- [x] **Phase 7 — Documents:** files and links attached to clients and projects. Uploads go to a **private** Supabase Storage bucket (10MB cap) and are served only through short-lived signed URLs via `/api/documents/[id]`; **Google Drive** links are recognised automatically (file id parsed, URL normalised) and stay in Drive, so Google's own sharing rules still govern access.
+- [x] **Phase 6 — Money:** per-project **payment milestones** (advance / mid / final) with due dates, invoice numbers and pending → invoiced → paid status; a "Money outstanding" dashboard tile listing overdue and upcoming payments; **GSTIN** on clients. GST invoicing and bookkeeping stay in Zoho Books — the app only records the invoice number.
+- [x] **Phase 5 — Pipeline hygiene & offboarding:** enforced deactivation + admin password reset; inquiries gained a linked contact, lead **source**, **next follow-up** date and **lost reason**; converted projects keep a link back to their inquiry; a "Follow-ups due" tile on the dashboard and due/overdue badges on the board
+- [x] **Phase 3 — Projects & Tasks:** dev-shaped projects, per-project + global task boards (drag-and-drop, assignees, due dates)
+- [x] **Phase 4 — Convert & Deploy:** one-click won inquiry → project, Vercel deploy guide
+- [x] **Internal Ops — Social:** month content **calendar** + workflow board, categories, scheduling, assignment, in-app reminders, and a one-click **7-day auto plan** (LinkedIn / Instagram / Facebook / YouTube, themed per weekday)
+
+> **Reminders** are currently in-app (a "due" surface on the Social page + dashboard tile). To send real email/push reminders, add a Supabase `pg_cron` job that queries `social_posts` where `reminder_at <= now()` and calls an Edge Function / email provider.
