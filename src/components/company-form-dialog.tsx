@@ -44,7 +44,13 @@ export function CompanyFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    // Keyed by updated_at: this component instance persists across saves
+    // (only `open` toggles), so uncontrolled fields' `defaultValue` would
+    // otherwise never re-apply after a save — reopening would show the
+    // pre-save values, and re-saving would silently overwrite the real ones
+    // with that stale data. The key forces a fresh mount exactly when the
+    // underlying record actually changes.
+    <Dialog key={company?.updated_at ?? "new"} open={open} onOpenChange={setOpen}>
       <DialogTrigger render={trigger} />
       <DialogContent>
         <DialogHeader>

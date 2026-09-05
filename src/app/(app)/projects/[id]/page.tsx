@@ -105,13 +105,36 @@ export default async function ProjectDetailPage({
     updated_at: d.updated_at.toISOString(),
   }));
 
+  // Built from explicit scalar fields rather than `...project` — the raw
+  // Prisma result also carries `company`, `tasks`, `milestones`, `documents`
+  // and `time_entries` (via the `include` above), and time entries have a
+  // Decimal `hours` field. A spread would carry all of that as extra
+  // runtime properties on an object typed `Project`, and this object is
+  // passed whole to the client-side ProjectFormDialog below — silently
+  // leaking a raw Decimal across the server/client boundary (see the
+  // identical fix and explanation on src/app/(app)/crm/[id]/page.tsx).
   const serializedProject: Project = {
-    ...project,
-    budget: project.budget == null ? null : Number(project.budget),
-    start_date: dateStr(project.start_date),
+    id: project.id,
+    name: project.name,
+    type: project.type,
+    company_id: project.company_id,
+    inquiry_id: project.inquiry_id,
+    description: project.description,
+    phase: project.phase,
+    status: project.status,
+    tech_stack: project.tech_stack,
+    repo_url: project.repo_url,
+    staging_url: project.staging_url,
+    production_url: project.production_url,
+    domain: project.domain,
+    registrar: project.registrar,
+    hosting_provider: project.hosting_provider,
     domain_expiry: dateStr(project.domain_expiry),
     hosting_expiry: dateStr(project.hosting_expiry),
+    budget: project.budget == null ? null : Number(project.budget),
+    start_date: dateStr(project.start_date),
     launch_date: dateStr(project.launch_date),
+    created_by: project.created_by,
     created_at: project.created_at.toISOString(),
     updated_at: project.updated_at.toISOString(),
   };

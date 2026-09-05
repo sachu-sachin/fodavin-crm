@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth";
 import { PROJECT_TYPES, PROJECT_PHASES } from "@/lib/types";
-import type { Company, Contact, DocumentRecord } from "@/lib/types";
+import type { Contact, DocumentRecord } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { CompanyFormDialog } from "@/components/company-form-dialog";
 import { ContactsSection } from "@/components/contacts-section";
@@ -72,7 +72,23 @@ export default async function CompanyDetailPage({
 
       <PageHeader title={company.name} description={company.industry ?? undefined}>
         <CompanyFormDialog
-          company={company as unknown as Company}
+          // Only the scalar Company fields the edit form actually needs —
+          // `company` itself still carries its `projects` relation, and a
+          // project's `budget` is a Prisma Decimal. Passing that whole
+          // object (even via an `as unknown as Company` cast, which only
+          // satisfies the type checker) to this "use client" component
+          // would leak a raw Decimal across the server/client boundary.
+          company={{
+            id: company.id,
+            name: company.name,
+            website: company.website,
+            industry: company.industry,
+            gstin: company.gstin,
+            notes: company.notes,
+            created_by: company.created_by,
+            created_at: company.created_at.toISOString(),
+            updated_at: company.updated_at.toISOString(),
+          }}
           trigger={<Button variant="outline">Edit</Button>}
         />
         <DeleteEntityButton

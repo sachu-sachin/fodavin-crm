@@ -111,7 +111,8 @@ export function InquiryFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    // See company-form-dialog.tsx for why this is keyed by updated_at.
+    <Dialog key={inquiry?.updated_at ?? "new"} open={open} onOpenChange={setOpen}>
       <DialogTrigger nativeButton={nativeTrigger} render={trigger} />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

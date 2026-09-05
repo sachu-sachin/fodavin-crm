@@ -70,7 +70,8 @@ export function TaskFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    // See company-form-dialog.tsx for why this is keyed by updated_at.
+    <Dialog key={task?.updated_at ?? "new"} open={open} onOpenChange={setOpen}>
       <DialogTrigger nativeButton={nativeTrigger} render={trigger} />
       <DialogContent>
         <DialogHeader>
