@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { createPost, updatePost, deletePost } from "@/lib/actions/social";
+import { useGuardedForm } from "@/hooks/use-unsaved-changes-guard";
 import {
   SOCIAL_PLATFORMS,
   POST_STATUSES,
@@ -50,6 +51,7 @@ export function SocialPostDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
+  const { formRef, markClean } = useGuardedForm(open);
 
   function onAction(formData: FormData) {
     startTransition(async () => {
@@ -59,6 +61,7 @@ export function SocialPostDialog({
       } else {
         toast.success(res.success ?? "Saved");
         setError(undefined);
+        markClean();
         setOpen(false);
       }
     });
@@ -71,6 +74,7 @@ export function SocialPostDialog({
       fd.set("id", post.id);
       await deletePost(fd);
       toast.success("Post deleted");
+      markClean();
       setOpen(false);
     });
   }
@@ -84,6 +88,7 @@ export function SocialPostDialog({
           <DialogTitle>{isEdit ? "Edit post" : "New post"}</DialogTitle>
         </DialogHeader>
         <form
+          ref={formRef}
           action={onAction}
           className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
         >

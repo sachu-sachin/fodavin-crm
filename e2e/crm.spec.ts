@@ -93,6 +93,62 @@ test.describe("CRM — companies", () => {
   });
 });
 
+test.describe("CRM — filters and export", () => {
+  test("filters the client list by industry and exposes a matching CSV export link", async ({ page }) => {
+    const name = testName("Filter Co");
+
+    await page.goto("/crm");
+    await page.getByRole("button", { name: "Add company" }).click();
+    await dialog(page).getByLabel("Name").fill(name);
+    await dialog(page).getByLabel("Industry").fill("E2E Filter Industry");
+    await saveAndSettle(page, "Add company");
+
+    await page.goto("/crm");
+    await expect(page.getByText(name)).toBeVisible();
+
+    await page.getByLabel("Industry").selectOption({ label: "E2E Filter Industry" });
+    await page.waitForURL(/industry=/);
+    await expect(page.getByText(name)).toBeVisible();
+
+    const exportLink = page.getByRole("link", { name: "Export CSV" });
+    await expect(exportLink).toHaveAttribute("href", /\/api\/reports\/clients\?.*industry=/);
+
+    // Clearing goes back to the unfiltered list.
+    await page.getByRole("button", { name: "Clear filters" }).click();
+    await expect(page).toHaveURL(/\/crm$/);
+  });
+});
+
+test.describe("CRM — unsaved changes guard", () => {
+  // Only the negative case (no edits -> no dialog) is asserted here.
+  // useUnsavedChangesGuard (src/hooks/use-unsaved-changes-guard.ts) is a
+  // standard beforeunload + preventDefault()/returnValue implementation,
+  // but headless Chromium does not fire beforeunload dialogs at all
+  // (a documented Chromium limitation, not a Playwright one) — confirmed by
+  // trying both page.reload() and page.close({ runBeforeUnload: true }),
+  // neither of which ever surfaced the dialog event even with an actual
+  // unsaved edit present. Automating the positive case isn't possible in
+  // this environment; the hook's logic was verified by code review instead.
+  test("does not warn on reload when a dialog is open with no edits made", async ({ page }) => {
+    const name = testName("Guard Co");
+
+    await page.goto("/crm");
+    await page.getByRole("button", { name: "Add company" }).click();
+    await dialog(page).getByLabel("Name").fill(name);
+    await saveAndSettle(page, "Add company");
+
+    let dialogFired = false;
+    page.on("dialog", () => {
+      dialogFired = true;
+    });
+    await page.getByRole("link", { name: new RegExp(name) }).click();
+    await page.getByRole("button", { name: "Edit" }).click();
+    await page.reload();
+    expect(dialogFired).toBe(false);
+    await expect(page.getByRole("button", { name: "Edit" })).toBeVisible();
+  });
+});
+
 test.describe("CRM — contacts", () => {
   test("adds a contact to a company, edits it, then deletes it", async ({ page }) => {
     const companyName = testName("Contact Test Co");

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { createTask, updateTask, deleteTask } from "@/lib/actions/projects";
+import { useGuardedForm } from "@/hooks/use-unsaved-changes-guard";
 import { TASK_TYPES, TASK_STATUSES, type Task, type TaskStatus } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,7 @@ export function TaskFormDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
+  const { formRef, markClean } = useGuardedForm(open);
 
   const projectId = fixedProjectId ?? task?.project_id ?? "";
 
@@ -52,6 +54,7 @@ export function TaskFormDialog({
       } else {
         toast.success(res.success ?? "Saved");
         setError(undefined);
+        markClean();
         setOpen(false);
       }
     });
@@ -65,6 +68,7 @@ export function TaskFormDialog({
       if (task.project_id) fd.set("project_id", task.project_id);
       await deleteTask(fd);
       toast.success("Task deleted");
+      markClean();
       setOpen(false);
     });
   }
@@ -77,7 +81,7 @@ export function TaskFormDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit task" : "New task"}</DialogTitle>
         </DialogHeader>
-        <form action={onAction} className="space-y-4">
+        <form ref={formRef} action={onAction} className="space-y-4">
           {isEdit && <input type="hidden" name="id" value={task.id} />}
           {projectId && (
             <input type="hidden" name="project_id" value={projectId} />

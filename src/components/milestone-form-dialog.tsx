@@ -7,6 +7,7 @@ import {
   updateMilestone,
   deleteMilestone,
 } from "@/lib/actions/finance";
+import { useGuardedForm } from "@/hooks/use-unsaved-changes-guard";
 import { MILESTONE_STATUSES, type PaymentMilestone } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,7 @@ export function MilestoneFormDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
+  const { formRef, markClean } = useGuardedForm(open);
 
   function onAction(formData: FormData) {
     startTransition(async () => {
@@ -51,6 +53,7 @@ export function MilestoneFormDialog({
       } else {
         toast.success(res.success ?? "Saved");
         setError(undefined);
+        markClean();
         setOpen(false);
       }
     });
@@ -63,6 +66,7 @@ export function MilestoneFormDialog({
       fd.set("id", milestone.id);
       await deleteMilestone(fd);
       toast.success("Milestone deleted");
+      markClean();
       setOpen(false);
     });
   }
@@ -77,7 +81,7 @@ export function MilestoneFormDialog({
             {isEdit ? "Edit payment" : "Add payment milestone"}
           </DialogTitle>
         </DialogHeader>
-        <form action={onAction} className="space-y-4">
+        <form ref={formRef} action={onAction} className="space-y-4">
           <input type="hidden" name="project_id" value={projectId} />
           {isEdit && <input type="hidden" name="id" value={milestone.id} />}
           <div className="space-y-2">

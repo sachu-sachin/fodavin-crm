@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { createCompany, updateCompany } from "@/lib/actions/crm";
+import { useGuardedForm } from "@/hooks/use-unsaved-changes-guard";
 import type { Company } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ export function CompanyFormDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
+  const { formRef, markClean } = useGuardedForm(open);
 
   function onAction(formData: FormData) {
     startTransition(async () => {
@@ -38,6 +40,7 @@ export function CompanyFormDialog({
       } else {
         toast.success(res.success ?? "Saved");
         setError(undefined);
+        markClean();
         setOpen(false);
       }
     });
@@ -61,7 +64,7 @@ export function CompanyFormDialog({
               : "Add a new client to your directory."}
           </DialogDescription>
         </DialogHeader>
-        <form action={onAction} className="space-y-4">
+        <form ref={formRef} action={onAction} className="space-y-4">
           {isEdit && <input type="hidden" name="id" value={company.id} />}
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>

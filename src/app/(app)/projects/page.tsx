@@ -5,12 +5,18 @@ import {
   PROJECT_TYPES,
   PROJECT_PHASES,
   PROJECT_STATUSES,
+  type ProjectType,
+  type ProjectPhase,
+  type ProjectStatus,
 } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { ProjectFormDialog } from "@/components/project-form-dialog";
+import { ListFilterBar } from "@/components/list-filter-bar";
+import { BarChart } from "@/components/ui/bar-chart";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +25,29 @@ const label = (
   v: string,
 ) => list.find((o) => o.value === v)?.label ?? v;
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   await requirePermission("projects.view");
-  const [projects, companies] = await Promise.all([
+
+  const params = await searchParams;
+  const status = typeof params.status === "string" ? params.status : undefined;
+  const type = typeof params.type === "string" ? params.type : undefined;
+  const phase = typeof params.phase === "string" ? params.phase : undefined;
+  const companyId = typeof params.company === "string" ? params.company : undefined;
+
+  const where: Prisma.ProjectWhereInput = {
+    ...(status ? { status: status as ProjectStatus } : {}),
+    ...(type ? { type: type as ProjectType } : {}),
+    ...(phase ? { phase: phase as ProjectPhase } : {}),
+    ...(companyId ? { company_id: companyId } : {}),
+  };
+
+  const [projects, companies, allForChart] = await Promise.all([
     prisma.project.findMany({
+      where,
       include: {
         company: { select: { name: true } },
         _count: { select: { tasks: true } },
@@ -33,7 +58,25 @@ export default async function ProjectsPage() {
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    prisma.project.findMany({ select: { status: true } }),
   ]);
+
+  const statusCounts = new Map<string, number>();
+  for (const p of allForChart) {
+    statusCounts.set(p.status, (statusCounts.get(p.status) ?? 0) + 1);
+  }
+  const chartData = PROJECT_STATUSES.map((s) => ({
+    label: s.label,
+    value: statusCounts.get(s.value) ?? 0,
+  })).filter((d) => d.value > 0);
+
+  const exportParams = new URLSearchParams();
+  if (status) exportParams.set("status", status);
+  if (type) exportParams.set("type", type);
+  if (phase) exportParams.set("phase", phase);
+  if (companyId) exportParams.set("company", companyId);
+
+  const hasFilters = !!(status || type || phase || companyId);
 
   return (
     <div>
@@ -47,11 +90,42 @@ export default async function ProjectsPage() {
         />
       </PageHeader>
 
+      {chartData.length > 0 && (
+        <Card className="mb-4">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Projects by status
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <BarChart data={chartData} />
+          </CardContent>
+        </Card>
+      )}
+
+      <ListFilterBar
+        filters={[
+          { key: "status", label: "Status", options: PROJECT_STATUSES },
+          { key: "type", label: "Type", options: PROJECT_TYPES },
+          { key: "phase", label: "Phase", options: PROJECT_PHASES },
+          {
+            key: "company",
+            label: "Company",
+            options: companies.map((c) => ({ value: c.id, label: c.name })),
+          },
+        ]}
+        exportHref={`/api/reports/projects?${exportParams.toString()}`}
+      />
+
       {projects.length === 0 ? (
         <div className="rounded-lg border border-dashed bg-card p-10 text-center">
-          <p className="text-sm font-medium">No projects yet</p>
+          <p className="text-sm font-medium">
+            {hasFilters ? "No projects match these filters" : "No projects yet"}
+          </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Create your first project to start tracking delivery and tasks.
+            {hasFilters
+              ? "Try clearing a filter."
+              : "Create your first project to start tracking delivery and tasks."}
           </p>
         </div>
       ) : (

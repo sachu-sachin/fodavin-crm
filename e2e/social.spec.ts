@@ -54,3 +54,40 @@ test.describe("Social", () => {
     await dialog(page).getByRole("button", { name: "Delete" }).click();
   });
 });
+
+test.describe("Social — icons, filters and overview", () => {
+  test("shows a platform icon on a board card and filters the list by platform", async ({ page }) => {
+    const title = testName("Icon filter post");
+
+    await page.goto("/social");
+    await page.getByRole("tab", { name: "Board" }).click();
+    await page.getByRole("button", { name: "New post" }).click();
+    await dialog(page).getByLabel("Title").fill(title);
+    await dialog(page).getByLabel("Platform").selectOption("linkedin");
+    await saveAndSettle(page, "Create post");
+
+    const card = kanbanCard(page, title);
+    await expect(card).toBeVisible();
+    // The platform badge on the card renders an svg icon alongside the label.
+    await expect(card.locator("svg")).toHaveCount(1);
+
+    await page.getByLabel("Platform").selectOption({ label: "LinkedIn" });
+    await page.waitForURL(/platform=linkedin/);
+    await expect(page.getByText(title).first()).toBeVisible();
+
+    const exportLink = page.getByRole("link", { name: "Export CSV" });
+    await expect(exportLink).toHaveAttribute("href", /\/api\/reports\/social\?.*platform=linkedin/);
+
+    await page.getByRole("button", { name: "Clear filters" }).click();
+    await kanbanCard(page, title).click();
+    await dialog(page).getByRole("button", { name: "Delete" }).click();
+  });
+
+  test("the Overview tab renders without crashing", async ({ page }) => {
+    await page.goto("/social");
+    await page.getByRole("tab", { name: "Overview" }).click();
+    await expect(page.getByText("Posts by platform")).toBeVisible();
+    await expect(page.getByText("Posts by status")).toBeVisible();
+    await expect(page.getByText("Posts by month")).toBeVisible();
+  });
+});

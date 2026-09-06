@@ -64,4 +64,22 @@ test.describe("Projects", () => {
     await dialog(page).getByRole("button", { name: "Create project" }).click();
     await expect(dialog(page).getByLabel("Name")).toBeVisible();
   });
+
+  test("filters the project list by status and exposes a matching CSV export link", async ({ page }) => {
+    const name = testName("Filter Project");
+
+    await page.goto("/projects");
+    await page.getByRole("button", { name: "New project" }).click();
+    await dialog(page).getByLabel("Name").fill(name);
+    await dialog(page).getByLabel("Status").selectOption("on_hold");
+    await saveAndSettle(page, "Create project");
+
+    await page.goto("/projects");
+    await page.getByLabel("Status").selectOption({ label: "On Hold" });
+    await page.waitForURL(/status=on_hold/);
+    await expect(page.getByText(name)).toBeVisible();
+
+    const exportLink = page.getByRole("link", { name: "Export CSV" });
+    await expect(exportLink).toHaveAttribute("href", /\/api\/reports\/projects\?.*status=on_hold/);
+  });
 });

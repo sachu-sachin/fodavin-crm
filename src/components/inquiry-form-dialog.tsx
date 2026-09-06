@@ -8,6 +8,7 @@ import {
   deleteInquiry,
   convertInquiryToProject,
 } from "@/lib/actions/crm";
+import { useGuardedForm } from "@/hooks/use-unsaved-changes-guard";
 import {
   INQUIRY_SOURCES,
   INQUIRY_STAGES,
@@ -54,6 +55,7 @@ export function InquiryFormDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
+  const { formRef, markClean } = useGuardedForm(open);
 
   // Tracked so the contact list narrows to the chosen client, and so the
   // follow-up / lost-reason fields follow the stage.
@@ -84,6 +86,7 @@ export function InquiryFormDialog({
       } else {
         toast.success(res.success ?? "Saved");
         setError(undefined);
+        markClean();
         setOpen(false);
       }
     });
@@ -96,6 +99,7 @@ export function InquiryFormDialog({
       fd.set("id", inquiry.id);
       await deleteInquiry(fd);
       toast.success("Inquiry deleted");
+      markClean();
       setOpen(false);
     });
   }
@@ -118,7 +122,7 @@ export function InquiryFormDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit inquiry" : "New inquiry"}</DialogTitle>
         </DialogHeader>
-        <form action={onAction} className="space-y-4">
+        <form ref={formRef} action={onAction} className="space-y-4">
           {isEdit && <input type="hidden" name="id" value={inquiry.id} />}
           <div className="space-y-2">
             <Label htmlFor="title">Title</Label>

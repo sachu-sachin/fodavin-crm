@@ -11,6 +11,7 @@ import {
 } from "@/lib/types";
 import { formatDateTimeIST } from "@/lib/format";
 import { SocialPostDialog } from "@/components/social-post-dialog";
+import { PlatformIcon } from "@/components/social-icons";
 import { Badge } from "@/components/ui/badge";
 
 const PLATFORM_LABEL = Object.fromEntries(
@@ -122,7 +123,8 @@ export function SocialBoard({
                           )}
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-2">
-                          <Badge variant="secondary" className="text-[10px]">
+                          <Badge variant="secondary" className="flex items-center gap-1 text-[10px]">
+                            <PlatformIcon platform={post.platform} className="h-3 w-3" />
                             {PLATFORM_LABEL[post.platform]}
                           </Badge>
                           <div className="flex items-center gap-2">

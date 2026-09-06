@@ -3,25 +3,20 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
+  SOCIAL_PLATFORMS,
   POST_CATEGORY_MAP,
   type SocialPost,
 } from "@/lib/types";
 import { clearPosts } from "@/lib/actions/social";
 import { formatTimeIST, istDateKey, monthYearLabel } from "@/lib/format";
 import { SocialPostDialog } from "@/components/social-post-dialog";
+import { PlatformIcon } from "@/components/social-icons";
 import { Button } from "@/components/ui/button";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-const PLATFORM_ABBR: Record<string, string> = {
-  instagram: "IG",
-  facebook: "FB",
-  linkedin: "LI",
-  twitter: "X",
-  tiktok: "TT",
-  youtube: "YT",
-  other: "•",
-};
+const platformLabel = (v: string) =>
+  SOCIAL_PLATFORMS.find((p) => p.value === v)?.label ?? v;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 // Calendar-cell key (visual date) — matches istDateKey's "YYYY-MM-DD" form.
@@ -194,8 +189,11 @@ export function SocialCalendar({
                                   cat?.dot ?? "bg-muted-foreground"
                                 }`}
                               />
-                              <span className="shrink-0 font-semibold text-muted-foreground">
-                                {PLATFORM_ABBR[p.platform]}
+                              <span
+                                className="shrink-0 text-muted-foreground"
+                                title={platformLabel(p.platform)}
+                              >
+                                <PlatformIcon platform={p.platform} className="h-2.5 w-2.5" />
                               </span>
                               <span className="truncate">{p.title}</span>
                               {p.scheduled_at && (

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { createContact, updateContact } from "@/lib/actions/crm";
+import { useGuardedForm } from "@/hooks/use-unsaved-changes-guard";
 import type { Contact } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ export function ContactFormDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
+  const { formRef, markClean } = useGuardedForm(open);
 
   function onAction(formData: FormData) {
     startTransition(async () => {
@@ -39,6 +41,7 @@ export function ContactFormDialog({
       } else {
         toast.success(res.success ?? "Saved");
         setError(undefined);
+        markClean();
         setOpen(false);
       }
     });
@@ -52,7 +55,7 @@ export function ContactFormDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit contact" : "Add contact"}</DialogTitle>
         </DialogHeader>
-        <form action={onAction} className="space-y-4">
+        <form ref={formRef} action={onAction} className="space-y-4">
           <input type="hidden" name="company_id" value={companyId} />
           {isEdit && <input type="hidden" name="id" value={contact.id} />}
           <div className="space-y-2">

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { createProject, updateProject } from "@/lib/actions/projects";
+import { useGuardedForm } from "@/hooks/use-unsaved-changes-guard";
 import {
   PROJECT_TYPES,
   PROJECT_PHASES,
@@ -38,6 +39,7 @@ export function ProjectFormDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
+  const { formRef, markClean } = useGuardedForm(open);
 
   function onAction(formData: FormData) {
     startTransition(async () => {
@@ -47,6 +49,7 @@ export function ProjectFormDialog({
       } else {
         toast.success(res.success ?? "Saved");
         setError(undefined);
+        markClean();
         setOpen(false);
       }
     });
@@ -61,6 +64,7 @@ export function ProjectFormDialog({
           <DialogTitle>{isEdit ? "Edit project" : "New project"}</DialogTitle>
         </DialogHeader>
         <form
+          ref={formRef}
           action={onAction}
           className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
         >
