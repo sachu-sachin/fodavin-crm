@@ -25,9 +25,19 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+// getSessionProfile checks this header first (set by the middleware, after
+// its own real getUser() call) before falling back to its own getUser()
+// call — see the "pre-verified via header" describe block below. Mocked to
+// return no header by default so every other test exercises the fallback
+// path exactly as before this header existed.
+vi.mock("next/headers", () => ({
+  headers: vi.fn(),
+}));
+
 const { createClient } = await import("@/lib/supabase/server");
 const { prisma } = await import("@/lib/prisma");
 const { redirect } = await import("next/navigation");
+const { headers } = await import("next/headers");
 const {
   authorize,
   can,
@@ -44,6 +54,12 @@ function mockUser(id: string | null) {
   } as never);
 }
 
+function mockVerifiedHeader(id: string | null) {
+  vi.mocked(headers).mockResolvedValue({
+    get: (name: string) => (name === "x-verified-user-id" ? id : null),
+  } as never);
+}
+
 function mockProfile(profile: unknown) {
   vi.mocked(prisma.profile.findUnique).mockResolvedValue(profile as never);
 }
@@ -53,6 +69,7 @@ beforeEach(() => {
   vi.mocked(redirect).mockImplementation((path: string) => {
     throw new Error(`REDIRECT:${path}`);
   });
+  mockVerifiedHeader(null);
 });
 
 describe("getSessionProfile", () => {
@@ -107,6 +124,36 @@ describe("getSessionProfile", () => {
 
     await expect(getSessionProfile()).rejects.toThrow("REDIRECT:/auth/signout?reason=deactivated");
     expect(redirect).toHaveBeenCalledWith("/auth/signout?reason=deactivated");
+  });
+});
+
+describe("getSessionProfile with a pre-verified header", () => {
+  // The middleware only ever sets this header to an id getUser() already
+  // verified server-side for this exact request (src/lib/supabase/middleware.ts
+  // strips any client-supplied copy first) — so trusting it here, and
+  // skipping a second getUser() call, is safe.
+  it("uses the header's id and never calls Supabase auth again", async () => {
+    mockVerifiedHeader("user-1");
+    mockUser(null); // if this were consulted, the session would be null
+    mockProfile({
+      id: "user-1",
+      is_active: true,
+      role: { is_admin: false, permissions: ["clients.view"] },
+    });
+
+    const session = await getSessionProfile();
+    expect(session?.userId).toBe("user-1");
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a real getUser() call when the header is absent", async () => {
+    mockVerifiedHeader(null);
+    mockUser("user-1");
+    mockProfile({ id: "user-1", is_active: true, role: null });
+
+    const session = await getSessionProfile();
+    expect(session?.userId).toBe("user-1");
+    expect(createClient).toHaveBeenCalled();
   });
 });
 

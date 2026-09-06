@@ -1,6 +1,8 @@
 import { cache } from "react";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { VERIFIED_USER_HEADER } from "@/lib/supabase/verified-user-header";
 import { prisma } from "@/lib/prisma";
 import {
   allPermissions,
@@ -27,14 +29,30 @@ export interface SessionProfile {
  */
 export const getSessionProfile = cache(
   async (): Promise<SessionProfile | null> => {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return null;
+    // The middleware already made one real network call to Supabase's auth
+    // server (getUser()) for this exact request and, only once verified,
+    // forwarded the id via this header — see updateSession in
+    // src/lib/supabase/middleware.ts, which strips any client-supplied copy
+    // of this header before that point, so it is never attacker-controlled.
+    // Trusting it here avoids paying for a second identical round trip.
+    // Falls back to a real getUser() call if it's ever missing (e.g. a
+    // context that doesn't go through that middleware).
+    const verifiedUserId = (await headers()).get(VERIFIED_USER_HEADER);
+
+    let userId: string;
+    if (verifiedUserId) {
+      userId = verifiedUserId;
+    } else {
+      const supabase = await createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return null;
+      userId = user.id;
+    }
 
     const profile = await prisma.profile.findUnique({
-      where: { id: user.id },
+      where: { id: userId },
       include: { role: true },
     });
 
@@ -45,7 +63,7 @@ export const getSessionProfile = cache(
     const isAdmin = !!profile?.role?.is_admin;
 
     return {
-      userId: user.id,
+      userId,
       profile: profile as unknown as ProfileWithRole | null,
       isAdmin,
       permissions: isAdmin
