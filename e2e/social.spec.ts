@@ -56,30 +56,45 @@ test.describe("Social", () => {
 });
 
 test.describe("Social — icons, filters and overview", () => {
-  test("shows a platform icon on a board card and filters the list by platform", async ({ page }) => {
-    const title = testName("Icon filter post");
+  test("shows a platform icon on a board card and filters the list by platform instantly (client-side, no navigation)", async ({ page }) => {
+    const linkedinTitle = testName("Icon filter LinkedIn post");
+    const instagramTitle = testName("Icon filter Instagram post");
 
     await page.goto("/social");
     await page.getByRole("tab", { name: "Board" }).click();
     await page.getByRole("button", { name: "New post" }).click();
-    await dialog(page).getByLabel("Title").fill(title);
+    await dialog(page).getByLabel("Title").fill(linkedinTitle);
     await dialog(page).getByLabel("Platform").selectOption("linkedin");
     await saveAndSettle(page, "Create post");
 
-    const card = kanbanCard(page, title);
+    await page.getByRole("button", { name: "New post" }).click();
+    await dialog(page).getByLabel("Title").fill(instagramTitle);
+    await dialog(page).getByLabel("Platform").selectOption("instagram");
+    await saveAndSettle(page, "Create post");
+
+    const card = kanbanCard(page, linkedinTitle);
     await expect(card).toBeVisible();
     // The platform badge on the card renders an svg icon alongside the label.
     await expect(card.locator("svg")).toHaveCount(1);
 
+    const url = page.url();
     await page.getByLabel("Platform").selectOption({ label: "LinkedIn" });
-    await page.waitForURL(/platform=linkedin/);
-    await expect(page.getByText(title).first()).toBeVisible();
+    await expect(page).toHaveURL(url);
+    // kanbanCard, not getByText: the card title's <p> and its containing
+    // draggable trigger both expose the same accessible text, which trips
+    // Playwright's strict mode on a bare getByText match.
+    await expect(kanbanCard(page, linkedinTitle)).toBeVisible();
+    await expect(kanbanCard(page, instagramTitle)).toHaveCount(0);
 
     const exportLink = page.getByRole("link", { name: "Export CSV" });
     await expect(exportLink).toHaveAttribute("href", /\/api\/reports\/social\?.*platform=linkedin/);
 
     await page.getByRole("button", { name: "Clear filters" }).click();
-    await kanbanCard(page, title).click();
+    await expect(kanbanCard(page, instagramTitle)).toBeVisible();
+
+    await kanbanCard(page, linkedinTitle).click();
+    await dialog(page).getByRole("button", { name: "Delete" }).click();
+    await kanbanCard(page, instagramTitle).click();
     await dialog(page).getByRole("button", { name: "Delete" }).click();
   });
 

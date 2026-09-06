@@ -1,8 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-
 export interface FilterDef {
   key: string;
   label: string;
@@ -10,48 +7,32 @@ export interface FilterDef {
 }
 
 /**
- * A row of <select> filters (plus an optional text search box) that read
- * from and write to the URL's searchParams, so filters are bookmarkable and
- * the server component re-renders with a filtered query — no client-side
- * over-fetch-then-filter. Follows the same useRouter().push(path?params)
- * pattern already used by TimesheetToolbar.
+ * A row of <select> filters (plus an optional text search box), fully
+ * controlled by the caller. Filtering itself happens in-memory over an
+ * already-fetched list (see e.g. crm-client-list.tsx), so there's nothing to
+ * debounce or push to a router — every change is just local state, applied
+ * instantly with no network round trip.
  */
 export function ListFilterBar({
   filters,
   search,
+  values,
+  onFilterChange,
+  onSearchChange,
+  onClear,
   exportHref,
 }: {
   filters: FilterDef[];
-  search?: { key: string; placeholder: string };
+  search?: { key: string; placeholder: string; value: string };
+  values: Record<string, string>;
+  onFilterChange: (key: string, value: string) => void;
+  onSearchChange?: (value: string) => void;
+  onClear: () => void;
   /** Export CSV link; carries the current filters forward via its own query string set by the caller. */
   exportHref: string;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function setParam(key: string, value: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value) params.set(key, value);
-    else params.delete(key);
-    router.push(`${pathname}?${params.toString()}`, { scroll: false });
-  }
-
-  function onSearchChange(value: string) {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setParam(search!.key, value), 400);
-  }
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
-
   const hasActiveFilters =
-    (search && searchParams.get(search.key)) ||
-    filters.some((f) => searchParams.get(f.key));
+    (search && search.value) || filters.some((f) => values[f.key]);
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -60,8 +41,8 @@ export function ListFilterBar({
           type="text"
           aria-label={search.placeholder}
           placeholder={search.placeholder}
-          defaultValue={searchParams.get(search.key) ?? ""}
-          onChange={(e) => onSearchChange(e.target.value)}
+          value={search.value}
+          onChange={(e) => onSearchChange?.(e.target.value)}
           className="h-9 w-48 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
         />
       )}
@@ -69,8 +50,8 @@ export function ListFilterBar({
         <select
           key={f.key}
           aria-label={f.label}
-          value={searchParams.get(f.key) ?? ""}
-          onChange={(e) => setParam(f.key, e.target.value)}
+          value={values[f.key] ?? ""}
+          onChange={(e) => onFilterChange(f.key, e.target.value)}
           className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:border-primary"
         >
           <option value="">{f.label}: All</option>
@@ -84,7 +65,7 @@ export function ListFilterBar({
       {hasActiveFilters && (
         <button
           type="button"
-          onClick={() => router.push(pathname)}
+          onClick={onClear}
           className="text-sm text-muted-foreground underline-offset-2 hover:underline"
         >
           Clear filters

@@ -94,28 +94,38 @@ test.describe("CRM — companies", () => {
 });
 
 test.describe("CRM — filters and export", () => {
-  test("filters the client list by industry and exposes a matching CSV export link", async ({ page }) => {
-    const name = testName("Filter Co");
+  test("filters the client list by industry instantly (client-side, no navigation) and exposes a matching CSV export link", async ({ page }) => {
+    const matching = testName("Filter Match Co");
+    const other = testName("Filter Other Co");
 
     await page.goto("/crm");
     await page.getByRole("button", { name: "Add company" }).click();
-    await dialog(page).getByLabel("Name").fill(name);
+    await dialog(page).getByLabel("Name").fill(matching);
     await dialog(page).getByLabel("Industry").fill("E2E Filter Industry");
     await saveAndSettle(page, "Add company");
 
-    await page.goto("/crm");
-    await expect(page.getByText(name)).toBeVisible();
+    await page.getByRole("button", { name: "Add company" }).click();
+    await dialog(page).getByLabel("Name").fill(other);
+    await dialog(page).getByLabel("Industry").fill("E2E Other Industry");
+    await saveAndSettle(page, "Add company");
 
+    await page.goto("/crm");
+    await expect(page.getByText(matching)).toBeVisible();
+    await expect(page.getByText(other)).toBeVisible();
+
+    const url = page.url();
     await page.getByLabel("Industry").selectOption({ label: "E2E Filter Industry" });
-    await page.waitForURL(/industry=/);
-    await expect(page.getByText(name)).toBeVisible();
+    // Filtering is instant, in-memory — no navigation should occur.
+    await expect(page).toHaveURL(url);
+    await expect(page.getByText(matching)).toBeVisible();
+    await expect(page.getByText(other)).toHaveCount(0);
 
     const exportLink = page.getByRole("link", { name: "Export CSV" });
     await expect(exportLink).toHaveAttribute("href", /\/api\/reports\/clients\?.*industry=/);
 
-    // Clearing goes back to the unfiltered list.
+    // Clearing brings the filtered-out company back.
     await page.getByRole("button", { name: "Clear filters" }).click();
-    await expect(page).toHaveURL(/\/crm$/);
+    await expect(page.getByText(other)).toBeVisible();
   });
 });
 

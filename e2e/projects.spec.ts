@@ -65,19 +65,29 @@ test.describe("Projects", () => {
     await expect(dialog(page).getByLabel("Name")).toBeVisible();
   });
 
-  test("filters the project list by status and exposes a matching CSV export link", async ({ page }) => {
-    const name = testName("Filter Project");
+  test("filters the project list by status instantly (client-side, no navigation) and exposes a matching CSV export link", async ({ page }) => {
+    const onHold = testName("Filter OnHold Project");
+    const active = testName("Filter Active Project");
 
     await page.goto("/projects");
     await page.getByRole("button", { name: "New project" }).click();
-    await dialog(page).getByLabel("Name").fill(name);
+    await dialog(page).getByLabel("Name").fill(onHold);
     await dialog(page).getByLabel("Status").selectOption("on_hold");
     await saveAndSettle(page, "Create project");
 
+    await page.getByRole("button", { name: "New project" }).click();
+    await dialog(page).getByLabel("Name").fill(active);
+    await saveAndSettle(page, "Create project");
+
     await page.goto("/projects");
+    await expect(page.getByText(onHold)).toBeVisible();
+    await expect(page.getByText(active)).toBeVisible();
+
+    const url = page.url();
     await page.getByLabel("Status").selectOption({ label: "On Hold" });
-    await page.waitForURL(/status=on_hold/);
-    await expect(page.getByText(name)).toBeVisible();
+    await expect(page).toHaveURL(url);
+    await expect(page.getByText(onHold)).toBeVisible();
+    await expect(page.getByText(active)).toHaveCount(0);
 
     const exportLink = page.getByRole("link", { name: "Export CSV" });
     await expect(exportLink).toHaveAttribute("href", /\/api\/reports\/projects\?.*status=on_hold/);
