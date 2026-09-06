@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
@@ -24,33 +25,35 @@ export interface SessionProfile {
  * bans the auth user, but an already-issued access token stays valid until it
  * expires, so this is what closes that window.
  */
-export async function getSessionProfile(): Promise<SessionProfile | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+export const getSessionProfile = cache(
+  async (): Promise<SessionProfile | null> => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
 
-  const profile = await prisma.profile.findUnique({
-    where: { id: user.id },
-    include: { role: true },
-  });
+    const profile = await prisma.profile.findUnique({
+      where: { id: user.id },
+      include: { role: true },
+    });
 
-  if (profile && !profile.is_active) {
-    redirect("/auth/signout?reason=deactivated");
-  }
+    if (profile && !profile.is_active) {
+      redirect("/auth/signout?reason=deactivated");
+    }
 
-  const isAdmin = !!profile?.role?.is_admin;
+    const isAdmin = !!profile?.role?.is_admin;
 
-  return {
-    userId: user.id,
-    profile: profile as unknown as ProfileWithRole | null,
-    isAdmin,
-    permissions: isAdmin
-      ? allPermissions()
-      : expandPermissions(profile?.role?.permissions ?? []),
-  };
-}
+    return {
+      userId: user.id,
+      profile: profile as unknown as ProfileWithRole | null,
+      isAdmin,
+      permissions: isAdmin
+        ? allPermissions()
+        : expandPermissions(profile?.role?.permissions ?? []),
+    };
+  },
+);
 
 /** Does this session hold the permission? */
 export function can(
