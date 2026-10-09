@@ -185,13 +185,15 @@ model Role {
 
 /// 1:1 with auth.users (FK added in supabase/setup.sql).
 model Profile {
-  id         String   @id @db.Uuid
-  full_name  String?
-  email      String?
-  avatar_url String?
-  role_id    String?  @db.Uuid
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now()) @db.Timestamptz(6)
+  id           String   @id @db.Uuid
+  full_name    String?
+  email        String?
+  avatar_url   String?
+  role_id      String?  @db.Uuid
+  is_active    Boolean  @default(true)
+  /// Receive the daily reminder email. Each person can switch it off.
+  email_digest Boolean  @default(true)
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
 
   role               Role?              @relation(fields: [role_id], references: [id], onDelete: SetNull)
   assigned_tasks     Task[]             @relation("TaskAssignee")
@@ -201,6 +203,7 @@ model Profile {
   announcement_reads AnnouncementRead[]
   /// This person's own onboarding (at most one).
   onboarding         Onboarding?        @relation("OnboardingEmployee")
+  digests            DigestLog[]
 
   @@index([role_id])
   @@map("profiles")
@@ -357,6 +360,22 @@ model Task {
   @@index([onboarding_id])
   @@index([status])
   @@map("tasks")
+}
+
+/// One row per person per IST day a reminder digest was sent, so a
+/// scheduler that fires twice can never email anyone twice.
+model DigestLog {
+  profile_id String   @db.Uuid
+  /// "YYYY-MM-DD" in IST.
+  day        String
+  /// How many items the email listed.
+  item_count Int
+  sent_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@id([profile_id, day])
+  @@map("digest_log")
 }
 
 /// A reusable onboarding checklist, e.g. "Developer onboarding".

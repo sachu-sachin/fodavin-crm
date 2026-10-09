@@ -34,6 +34,7 @@ export default async function AppLayout({
               name={name}
               email={email}
               avatarUrl={profile?.avatar_url}
+              emailDigest={profile?.email_digest ?? true}
             />
           </div>
         </header>
