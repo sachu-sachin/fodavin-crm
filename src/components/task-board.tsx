@@ -16,6 +16,8 @@ export type BoardTask = Task & {
   project_name?: string | null;
   /** For an action item with no project, the meeting it came from. */
   meeting_title?: string | null;
+  /** For an onboarding checklist item, who is being onboarded. */
+  onboarding_for?: string | null;
 };
 
 const TYPE_LABEL = Object.fromEntries(
@@ -115,9 +117,13 @@ export function TaskBoard({
                         className="cursor-grab rounded-md border bg-card p-3 shadow-sm hover:border-primary/50 active:cursor-grabbing"
                       >
                         <p className="text-sm font-medium">{task.title}</p>
-                        {showProject && (task.project_name || task.meeting_title) && (
+                        {showProject &&
+                          (task.project_name || task.meeting_title || task.onboarding_for) && (
                           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {task.project_name ?? `Meeting: ${task.meeting_title}`}
+                            {task.project_name ??
+                              (task.meeting_title
+                                ? `Meeting: ${task.meeting_title}`
+                                : `Onboarding: ${task.onboarding_for}`)}
                           </p>
                         )}
                         <div className="mt-2 flex items-center justify-between gap-2">

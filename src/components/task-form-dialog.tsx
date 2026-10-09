@@ -27,6 +27,7 @@ export function TaskFormDialog({
   projects,
   fixedProjectId,
   fixedMeetingId,
+  fixedOnboardingId,
   defaultStatus = "todo",
   trigger,
   nativeTrigger = true,
@@ -37,6 +38,8 @@ export function TaskFormDialog({
   fixedProjectId?: string;
   /** Create the task as an action item of this meeting (inherits its project). */
   fixedMeetingId?: string;
+  /** Create the task as an item on this onboarding checklist. */
+  fixedOnboardingId?: string;
   defaultStatus?: TaskStatus;
   trigger: React.ReactElement;
   nativeTrigger?: boolean;
@@ -86,7 +89,9 @@ export function TaskFormDialog({
               ? "Edit task"
               : fixedMeetingId
                 ? "New action item"
-                : "New task"}
+                : fixedOnboardingId
+                  ? "New checklist item"
+                  : "New task"}
           </DialogTitle>
         </DialogHeader>
         <form ref={formRef} action={onAction} className="space-y-4">
@@ -96,6 +101,9 @@ export function TaskFormDialog({
           )}
           {fixedMeetingId && !isEdit && (
             <input type="hidden" name="meeting_id" value={fixedMeetingId} />
+          )}
+          {fixedOnboardingId && !isEdit && (
+            <input type="hidden" name="onboarding_id" value={fixedOnboardingId} />
           )}
 
           <div className="space-y-2">
@@ -108,7 +116,7 @@ export function TaskFormDialog({
             />
           </div>
 
-          {!fixedProjectId && !fixedMeetingId && !isEdit && projects && (
+          {!fixedProjectId && !fixedMeetingId && !fixedOnboardingId && !isEdit && projects && (
             <div className="space-y-2">
               <Label htmlFor="project_id">Project</Label>
               <select
@@ -223,7 +231,9 @@ export function TaskFormDialog({
                   ? "Save changes"
                   : fixedMeetingId
                     ? "Add action item"
-                    : "Create task"}
+                    : fixedOnboardingId
+                      ? "Add item"
+                      : "Create task"}
             </Button>
           </DialogFooter>
         </form>

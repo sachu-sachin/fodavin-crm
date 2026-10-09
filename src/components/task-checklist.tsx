@@ -14,18 +14,28 @@ const STATUS_LABEL = Object.fromEntries(
 ) as Record<string, string>;
 
 /**
- * A meeting's action items. They're ordinary tasks, so they also appear on the
- * task boards and in each assignee's "My tasks this week"; ticking one here
- * moves it to Done there too.
+ * A checklist of tasks belonging to a meeting (its action items) or an
+ * onboarding. They're ordinary tasks, so they also appear on the task boards
+ * and in each assignee's "My tasks this week"; ticking one here moves it to
+ * Done there too.
  */
-export function ActionItemsSection({
-  meetingId,
+export function TaskChecklist({
+  parent,
+  heading,
+  addLabel,
+  emptyHint,
   items,
   assignees,
   today,
   canManage,
 }: {
-  meetingId: string;
+  /** What new items are added to. */
+  parent: { meetingId: string } | { onboardingId: string };
+  heading: string;
+  /** e.g. "Add action item". */
+  addLabel: string;
+  /** Shown under "Nothing yet." to people who can add. */
+  emptyHint: string;
   items: Task[];
   assignees: { id: string; name: string }[];
   /** "YYYY-MM-DD" in IST, for overdue highlighting. */
@@ -57,7 +67,7 @@ export function ActionItemsSection({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">
-          Action items
+          {heading}
           {list.length > 0 && (
             <span className="ml-2 text-sm font-normal text-muted-foreground">
               {open} open of {list.length}
@@ -66,11 +76,13 @@ export function ActionItemsSection({
         </CardTitle>
         {canManage && (
           <TaskFormDialog
-            fixedMeetingId={meetingId}
+            {...("meetingId" in parent
+              ? { fixedMeetingId: parent.meetingId }
+              : { fixedOnboardingId: parent.onboardingId })}
             assignees={assignees}
             trigger={
               <Button size="sm" variant="outline">
-                Add action item
+                {addLabel}
               </Button>
             }
           />
@@ -79,8 +91,8 @@ export function ActionItemsSection({
       <CardContent>
         {list.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
-            No action items yet.
-            {canManage && " Add one for each follow-up, with an owner and a due date."}
+            Nothing yet.
+            {canManage && ` ${emptyHint}`}
           </p>
         ) : (
           <ul className="divide-y">

@@ -210,6 +210,8 @@ export interface Task {
   assignee_id: string | null;
   /** Set when the task is an action item from a meeting. */
   meeting_id: string | null;
+  /** Set when the task is an item on someone's onboarding checklist. */
+  onboarding_id: string | null;
   position: number;
   due_date: string | null;
   created_by: string | null;
@@ -252,6 +254,25 @@ export interface Announcement {
   expires_at: string | null;
   created_by: string | null;
   created_at: string;
+  updated_at: string;
+}
+
+/** One step of an onboarding template, as edited in the template dialog. */
+export interface OnboardingTemplateItemData {
+  title: string;
+  description: string | null;
+  assign_to_new_hire: boolean;
+  /** A specific team member; ignored when assign_to_new_hire. */
+  assignee_id: string | null;
+  /** Days after the start date; negative is before day one. */
+  due_offset_days: number;
+}
+
+export interface OnboardingTemplateData {
+  id: string;
+  name: string;
+  description: string | null;
+  items: OnboardingTemplateItemData[];
   updated_at: string;
 }
 

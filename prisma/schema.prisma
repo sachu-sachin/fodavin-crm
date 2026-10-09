@@ -199,6 +199,8 @@ model Profile {
   time_entries       TimeEntry[]
   meetings           MeetingAttendee[]
   announcement_reads AnnouncementRead[]
+  /// This person's own onboarding (at most one).
+  onboarding         Onboarding?        @relation("OnboardingEmployee")
 
   @@index([role_id])
   @@map("profiles")
@@ -322,33 +324,95 @@ model Project {
 }
 
 model Task {
-  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  project_id  String?    @db.Uuid
-  title       String
-  description String?
-  type        TaskType   @default(general)
-  status      TaskStatus @default(todo)
-  assignee_id String?    @db.Uuid
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id    String?    @db.Uuid
+  title         String
+  description   String?
+  type          TaskType   @default(general)
+  status        TaskStatus @default(todo)
+  assignee_id   String?    @db.Uuid
   /// Set when the task is an action item from a meeting. Such a task may have
   /// no project (an internal meeting); it still lives on the normal boards.
-  meeting_id  String?    @db.Uuid
-  position    Int        @default(0)
-  due_date    DateTime?  @db.Date
-  created_by  String?    @db.Uuid
-  created_at  DateTime   @default(now()) @db.Timestamptz(6)
-  updated_at  DateTime   @default(now()) @db.Timestamptz(6)
+  meeting_id    String?    @db.Uuid
+  /// Set when the task is an item on someone's onboarding checklist.
+  onboarding_id String?    @db.Uuid
+  position      Int        @default(0)
+  due_date      DateTime?  @db.Date
+  created_by    String?    @db.Uuid
+  created_at    DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime   @default(now()) @db.Timestamptz(6)
 
-  project  Project? @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  assignee Profile? @relation("TaskAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
+  project    Project?    @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  assignee   Profile?    @relation("TaskAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
   /// SetNull, not Cascade: deleting a meeting's record must not silently
   /// delete the work that came out of it.
-  meeting  Meeting? @relation(fields: [meeting_id], references: [id], onDelete: SetNull)
+  meeting    Meeting?    @relation(fields: [meeting_id], references: [id], onDelete: SetNull)
+  /// Cascade: the checklist only exists for that onboarding — cancelling it
+  /// (say the person never joined) removes its items too.
+  onboarding Onboarding? @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
 
   @@index([project_id])
   @@index([assignee_id])
   @@index([meeting_id])
+  @@index([onboarding_id])
   @@index([status])
   @@map("tasks")
+}
+
+/// A reusable onboarding checklist, e.g. "Developer onboarding".
+model OnboardingTemplate {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  created_by  String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  items       OnboardingTemplateItem[]
+  onboardings Onboarding[]
+
+  @@map("onboarding_templates")
+}
+
+/// One step of a template. Becomes a Task when an onboarding starts.
+model OnboardingTemplateItem {
+  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  template_id        String  @db.Uuid
+  title              String
+  description        String?
+  /// Give it to the person being onboarded…
+  assign_to_new_hire Boolean @default(false)
+  /// …or to this team member (ignored when assign_to_new_hire). Neither
+  /// means unassigned.
+  assignee_id        String? @db.Uuid
+  /// Due this many days after the start date; negative is before day one.
+  due_offset_days    Int     @default(0)
+  position           Int     @default(0)
+
+  template OnboardingTemplate @relation(fields: [template_id], references: [id], onDelete: Cascade)
+
+  @@index([template_id])
+  @@map("onboarding_template_items")
+}
+
+/// Someone being onboarded. Its checklist items are ordinary Tasks
+/// (Task.onboarding_id), so they show on the boards and dashboards.
+model Onboarding {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// One onboarding per person.
+  profile_id  String   @unique @db.Uuid
+  /// Which template it was created from; kept for reference only.
+  template_id String?  @db.Uuid
+  start_date  DateTime @db.Date
+  created_by  String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  profile  Profile             @relation("OnboardingEmployee", fields: [profile_id], references: [id], onDelete: Cascade)
+  template OnboardingTemplate? @relation(fields: [template_id], references: [id], onDelete: SetNull)
+  tasks    Task[]
+
+  @@map("onboardings")
 }
 
 /// A meeting: who was there, what was discussed and decided. Its action items

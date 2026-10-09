@@ -22,6 +22,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     task: { create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     meeting: { findUnique: vi.fn() },
+    onboarding: { findUnique: vi.fn() },
   },
 }));
 
@@ -112,6 +113,28 @@ describe("createTask", () => {
     });
   });
 
+  it("adds an item to an onboarding checklist, with no project", async () => {
+    authorized();
+    vi.mocked(prisma.onboarding.findUnique).mockResolvedValue({ id: "o1" } as never);
+    const result = await createTask({}, form({ onboarding_id: "o1", title: "Order business cards" }));
+
+    expect(result.error).toBeUndefined();
+    expect(prisma.meeting.findUnique).not.toHaveBeenCalled();
+    expect(vi.mocked(prisma.task.create).mock.calls[0][0].data).toMatchObject({
+      project_id: null,
+      onboarding_id: "o1",
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/onboarding/o1");
+  });
+
+  it("errors when the onboarding no longer exists", async () => {
+    authorized();
+    vi.mocked(prisma.onboarding.findUnique).mockResolvedValue(null);
+    const result = await createTask({}, form({ onboarding_id: "gone", title: "X" }));
+    expect(result.error).toMatch(/no longer exists/i);
+    expect(prisma.task.create).not.toHaveBeenCalled();
+  });
+
   it("errors when the meeting no longer exists", async () => {
     authorized();
     vi.mocked(prisma.meeting.findUnique).mockResolvedValue(null);
@@ -135,6 +158,7 @@ describe("task updates refresh the task's own meeting and project pages", () => 
     expect(vi.mocked(prisma.task.update).mock.calls[0][0].select).toEqual({
       project_id: true,
       meeting_id: true,
+      onboarding_id: true,
     });
     expect(revalidatePath).toHaveBeenCalledWith("/projects/p1");
     expect(revalidatePath).toHaveBeenCalledWith("/meetings/m1");
@@ -144,7 +168,7 @@ describe("task updates refresh the task's own meeting and project pages", () => 
     await deleteTask(form({ id: "t1" }));
     expect(prisma.task.delete).toHaveBeenCalledWith({
       where: { id: "t1" },
-      select: { project_id: true, meeting_id: true },
+      select: { project_id: true, meeting_id: true, onboarding_id: true },
     });
     expect(revalidatePath).toHaveBeenCalledWith("/meetings/m1");
   });
@@ -154,7 +178,7 @@ describe("task updates refresh the task's own meeting and project pages", () => 
     expect(prisma.task.update).toHaveBeenCalledWith({
       where: { id: "t1" },
       data: { status: "done" },
-      select: { project_id: true, meeting_id: true },
+      select: { project_id: true, meeting_id: true, onboarding_id: true },
     });
     expect(revalidatePath).toHaveBeenCalledWith("/meetings/m1");
   });

@@ -29,6 +29,9 @@ export const PERMISSIONS = [
 
   "announcements.manage",
 
+  "onboarding.view",
+  "onboarding.manage",
+
   "finance.view",
   "finance.manage",
 
@@ -157,6 +160,19 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    key: "onboarding",
+    label: "Onboarding",
+    description: "New-joiner checklists. Everyone can always see their own.",
+    permissions: [
+      { value: "onboarding.view", label: "See everyone's onboarding progress" },
+      {
+        value: "onboarding.manage",
+        label: "Start onboardings and edit checklist templates",
+        hint: "Ticking items off uses the task permissions, like any task.",
+      },
+    ],
+  },
+  {
     key: "finance",
     label: "Finance",
     description:
@@ -252,6 +268,7 @@ const IMPLIES: Partial<Record<Permission, Permission[]>> = {
   "projects.delete": ["projects.view", "projects.manage"],
   "tasks.manage": ["tasks.view"],
   "meetings.manage": ["meetings.view"],
+  "onboarding.manage": ["onboarding.view"],
   "finance.manage": ["finance.view"],
   "documents.upload": ["documents.view"],
   "documents.delete": ["documents.view"],
@@ -308,6 +325,7 @@ export const ROLE_TEMPLATES: {
       "tasks.view", "tasks.manage",
       "meetings.view", "meetings.manage",
       "announcements.manage",
+      "onboarding.view", "onboarding.manage",
       "finance.view", "finance.manage",
       "documents.view", "documents.upload", "documents.delete",
       "timesheet.log", "timesheet.view_all", "timesheet.manage_all",

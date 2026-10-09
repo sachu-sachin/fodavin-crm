@@ -49,6 +49,7 @@ export default async function DashboardPage() {
     myTasks,
     todaysMeetings,
     unreadAnnouncements,
+    myOnboarding,
   ] = await Promise.all([
     prisma.company.count(),
     prisma.inquiry.count({ where: { stage: { notIn: ["won", "lost"] } } }),
@@ -114,6 +115,7 @@ export default async function DashboardPage() {
         due_date: true,
         project: { select: { id: true, name: true } },
         meeting_id: true,
+        onboarding_id: true,
       },
       orderBy: { due_date: "asc" },
       take: 5,
@@ -144,7 +146,20 @@ export default async function DashboardPage() {
       orderBy: [{ pinned: "desc" }, { publish_at: "desc" }],
       take: 5,
     }),
+    // A new joiner's own checklist, whatever their permissions.
+    prisma.onboarding.findUnique({
+      where: { profile_id: session.userId },
+      select: {
+        id: true,
+        tasks: {
+          select: { id: true, title: true, status: true, due_date: true, assignee_id: true },
+          orderBy: [{ due_date: "asc" }, { position: "asc" }],
+        },
+      },
+    }),
   ]);
+
+  const onboardingOpen = myOnboarding?.tasks.filter((t) => t.status !== "done") ?? [];
 
   const outstanding = Number(outstandingTotal._sum.amount ?? 0);
 
@@ -217,6 +232,39 @@ export default async function DashboardPage() {
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        {myOnboarding && onboardingOpen.length > 0 && (
+        <DashboardCard
+          title="Your onboarding"
+          figure={
+            <span className="text-sm font-normal text-muted-foreground">
+              {myOnboarding.tasks.length - onboardingOpen.length} of{" "}
+              {myOnboarding.tasks.length} done
+            </span>
+          }
+          empty=""
+        >
+          {onboardingOpen.slice(0, 5).map((t) => {
+            const due = dateStr(t.due_date);
+            const overdue = due != null && due < today;
+            return (
+              <DashboardRow
+                key={t.id}
+                href={`/onboarding/${myOnboarding.id}`}
+                primary={t.title}
+                secondary={t.assignee_id === session.userId ? "Yours" : null}
+                trailing={
+                  <span
+                    className={`text-xs ${overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}
+                  >
+                    {due ? `${overdue ? "Overdue · " : ""}${formatDateKey(due)}` : "No date"}
+                  </span>
+                }
+              />
+            );
+          })}
+        </DashboardCard>
+        )}
+
         {unreadAnnouncements.length > 0 && (
         <DashboardCard
           title="Unread announcements"
@@ -260,7 +308,9 @@ export default async function DashboardPage() {
                       ? `/projects/${task.project.id}`
                       : task.meeting_id
                         ? `/meetings/${task.meeting_id}`
-                        : "/tasks"
+                        : task.onboarding_id
+                          ? `/onboarding/${task.onboarding_id}`
+                          : "/tasks"
                   }
                   primary={task.title}
                   secondary={task.project?.name}

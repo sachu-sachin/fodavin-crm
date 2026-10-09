@@ -180,10 +180,15 @@ export async function deleteProject(formData: FormData): Promise<void> {
 function revalidateTask(task: {
   project_id: string | null;
   meeting_id: string | null;
+  onboarding_id: string | null;
 }) {
   revalidatePath("/tasks");
   if (task.project_id) revalidatePath(`/projects/${task.project_id}`);
   if (task.meeting_id) revalidatePath(`/meetings/${task.meeting_id}`);
+  if (task.onboarding_id) {
+    revalidatePath(`/onboarding/${task.onboarding_id}`);
+    revalidatePath("/onboarding");
+  }
 }
 
 export async function createTask(
@@ -194,12 +199,19 @@ export async function createTask(
   if (!userId) return { error: DENIED_MESSAGE };
   let projectId = str(formData.get("project_id"));
   const meetingId = str(formData.get("meeting_id"));
+  const onboardingId = str(formData.get("onboarding_id"));
   const title = String(formData.get("title") ?? "").trim();
 
   // A meeting's action item takes the meeting's project, if it has one; an
-  // internal meeting's action items have no project. Every other task must
-  // belong to a project.
-  if (meetingId) {
+  // internal meeting's action items have no project, and neither do
+  // onboarding checklist items. Every other task must belong to a project.
+  if (onboardingId) {
+    const onboarding = await prisma.onboarding.findUnique({
+      where: { id: onboardingId },
+      select: { id: true },
+    });
+    if (!onboarding) return { error: "That onboarding no longer exists." };
+  } else if (meetingId) {
     const meeting = await prisma.meeting.findUnique({
       where: { id: meetingId },
       select: { project_id: true },
@@ -218,6 +230,7 @@ export async function createTask(
     data: {
       project_id: projectId,
       meeting_id: meetingId,
+      onboarding_id: onboardingId,
       title,
       description: str(formData.get("description")),
       type: TASK_TYPE.has(type) ? type : "general",
@@ -228,7 +241,11 @@ export async function createTask(
     },
   });
 
-  revalidateTask({ project_id: projectId, meeting_id: meetingId });
+  revalidateTask({
+    project_id: projectId,
+    meeting_id: meetingId,
+    onboarding_id: onboardingId,
+  });
   return { success: `Task "${title}" added.` };
 }
 
@@ -254,7 +271,7 @@ export async function updateTask(
       assignee_id: str(formData.get("assignee_id")),
       due_date: parseDate(formData.get("due_date")),
     },
-    select: { project_id: true, meeting_id: true },
+    select: { project_id: true, meeting_id: true, onboarding_id: true },
   });
 
   revalidateTask(task);
@@ -266,7 +283,7 @@ export async function deleteTask(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const task = await prisma.task.delete({
     where: { id },
-    select: { project_id: true, meeting_id: true },
+    select: { project_id: true, meeting_id: true, onboarding_id: true },
   });
   revalidateTask(task);
 }
@@ -281,7 +298,7 @@ export async function moveTaskStatus(
   const task = await prisma.task.update({
     where: { id },
     data: { status },
-    select: { project_id: true, meeting_id: true },
+    select: { project_id: true, meeting_id: true, onboarding_id: true },
   });
   revalidateTask(task);
 }

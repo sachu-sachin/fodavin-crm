@@ -75,7 +75,7 @@ $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['companies', 'contacts', 'inquiries', 'projects', 'tasks', 'social_posts', 'payment_milestones', 'documents', 'time_entries', 'meetings', 'announcements']
+  foreach t in array array['companies', 'contacts', 'inquiries', 'projects', 'tasks', 'social_posts', 'payment_milestones', 'documents', 'time_entries', 'meetings', 'announcements', 'onboarding_templates', 'onboardings']
   loop
     execute format('drop trigger if exists %I_updated_at on public.%I', t, t);
     execute format(
