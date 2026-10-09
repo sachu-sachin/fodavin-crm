@@ -155,6 +155,7 @@ export function TimesheetGrid({
                     <input
                       inputMode="decimal"
                       aria-label={`${project.name}, ${d.label} ${d.dayOfMonth}`}
+                      aria-busy={saving === key}
                       disabled={readOnly}
                       value={valueOf(key)}
                       placeholder="–"
