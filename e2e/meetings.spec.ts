@@ -12,6 +12,9 @@ function tomorrowAt1530(): string {
 const MEETING_URL = /\/meetings\/[0-9a-f-]{36}$/;
 
 async function deleteMeetingFromItsPage(page: Page) {
+  // Arriving via a link is a client-side navigation: wait for the meeting page
+  // itself, or "Delete" could still resolve to the previous page's button.
+  await expect(page).toHaveURL(MEETING_URL);
   await page.getByRole("button", { name: "Delete" }).first().click();
   await page.getByRole("button", { name: "Delete meeting" }).click();
   await expect(page).toHaveURL(/\/meetings$/);
@@ -44,7 +47,9 @@ test.describe("Meetings", () => {
     await page.getByLabel("Notes", { exact: true }).fill("Client liked the hero section.");
     await page.getByLabel("Decisions").fill("Go with the dark theme.");
     await page.getByRole("button", { name: "Save notes" }).click();
-    await page.waitForLoadState("networkidle");
+    // The save is a server action started in a transition; wait for its
+    // confirmation rather than network idle, which can fire before it starts.
+    await expect(page.getByText("Notes saved.")).toBeVisible();
     await page.reload();
     await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Client liked the hero section.");
     await expect(page.getByLabel("Decisions")).toHaveValue("Go with the dark theme.");
@@ -53,7 +58,8 @@ test.describe("Meetings", () => {
     await page.getByRole("button", { name: "Add action item" }).click();
     await dialog(page).getByLabel("Title").fill(actionItem);
     await saveAndSettle(page, "Add action item");
-    await expect(page.getByText(actionItem)).toBeVisible();
+    // Exact: the "Task … added" toast also contains the title.
+    await expect(page.getByText(actionItem, { exact: true })).toBeVisible();
     await expect(page.getByText("1 open of 1")).toBeVisible();
 
     const meetingUrl = page.url();
@@ -64,7 +70,11 @@ test.describe("Meetings", () => {
     // Ticking it off on the meeting page moves it to Done everywhere.
     await page.goto(meetingUrl);
     await page.getByRole("checkbox", { name: `Mark "${actionItem}" done` }).check();
-    await page.waitForLoadState("networkidle");
+    // The checkbox's label flips once the optimistic update lands; then give
+    // the server action time to finish before reloading.
+    await expect(page.getByRole("checkbox", { name: `Mark "${actionItem}" not done` })).toBeChecked();
+    await expect(page.getByText("0 open of 1")).toBeVisible();
+    await page.waitForTimeout(3000);
     await page.reload();
     await expect(page.getByText("0 open of 1")).toBeVisible();
 
