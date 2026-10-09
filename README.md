@@ -91,7 +91,7 @@ src/
   app/
     (app)/            Protected app shell + module pages
       page.tsx        Dashboard
-      crm/ pipeline/ projects/ tasks/ meetings/ social/ team/
+      announcements/ crm/ pipeline/ projects/ tasks/ meetings/ social/ team/
       employees/ roles/   Admin-only management
     login/            Email + password sign-in
     auth/callback/    OAuth callback (ready for future social login)
@@ -139,6 +139,7 @@ supabase/setup.sql         Auth triggers (create/delete), updated_at, Data API l
 
 ## Roadmap
 
+- [x] **Announcements:** company news, holidays and policies at `/announcements`, readable by every signed-in employee (no view permission — a notice people can be locked out of isn't one). Optional scheduled publish time, expiry, pinning, and an audience limited to chosen roles. Policies can **require acknowledgement** ("I've read this"); people with `announcements.manage` see "read by X of Y" and who hasn't yet, and can ask everyone to re-read after a substantial edit. Unread ones appear on each person's dashboard. After deploying: `npm run db:push`, `npm run db:setup`, `npm run db:seed`.
 - [x] **Meetings:** schedule internal, client, standup and review meetings with attendees, a call link and an agenda, optionally tied to a client and project. Notes and decisions are written in place on the meeting page. **Action items are ordinary tasks** (`Task.meeting_id`), so they appear on the task boards and in each person's "My tasks this week"; deleting a meeting keeps them. Meetings show on client and project pages, and a "Today's meetings" card sits on the dashboard. New permissions `meetings.view` / `meetings.manage` — after deploying, run `npm run db:push`, `npm run db:setup` and `npm run db:seed` (refreshes the template roles), and tick the new permissions on any custom roles.
 - [x] **Phase 1 — Foundation + Access Control:** scaffold, password auth, admin-only Employees & Roles, RLS, app shell, dashboard, team
 - [x] **Phase 2 — CRM Core:** companies/contacts CRUD, project-inquiries Kanban (drag-and-drop)

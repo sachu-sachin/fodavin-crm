@@ -71,6 +71,13 @@ export type TaskType =
 
 export type MeetingType = "internal" | "client" | "standup" | "review";
 
+export type AnnouncementCategory =
+  | "general"
+  | "policy"
+  | "holiday"
+  | "event"
+  | "urgent";
+
 export type SocialPlatform =
   | "instagram"
   | "facebook"
@@ -225,6 +232,24 @@ export interface Meeting {
   decisions: string | null;
   /** Profile ids of the team members attending. */
   attendee_ids: string[];
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  category: AnnouncementCategory;
+  pinned: boolean;
+  requires_ack: boolean;
+  /** Empty means everyone. */
+  audience_role_ids: string[];
+  /** ISO instant. */
+  publish_at: string;
+  /** ISO instant. */
+  expires_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -456,6 +481,34 @@ export const MEETING_TYPES: { value: MeetingType; label: string }[] = [
 
 /** Durations offered in the meeting form, in minutes. */
 export const MEETING_DURATIONS = [15, 30, 45, 60, 90, 120] as const;
+
+export const ANNOUNCEMENT_CATEGORIES: {
+  value: AnnouncementCategory;
+  label: string;
+  badge: string;
+}[] = [
+  { value: "general", label: "General", badge: "bg-muted text-muted-foreground" },
+  {
+    value: "policy",
+    label: "Policy",
+    badge: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  },
+  {
+    value: "holiday",
+    label: "Holiday",
+    badge: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  },
+  {
+    value: "event",
+    label: "Event",
+    badge: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+  },
+  { value: "urgent", label: "Urgent", badge: "bg-destructive/10 text-destructive" },
+];
+
+export const ANNOUNCEMENT_CATEGORY_MAP = Object.fromEntries(
+  ANNOUNCEMENT_CATEGORIES.map((c) => [c.value, c]),
+) as Record<AnnouncementCategory, (typeof ANNOUNCEMENT_CATEGORIES)[number]>;
 
 export const SOCIAL_PLATFORMS: { value: SocialPlatform; label: string }[] = [
   { value: "instagram", label: "Instagram" },
