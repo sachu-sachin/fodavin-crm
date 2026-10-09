@@ -28,8 +28,8 @@ export function ListFilterBar({
   onFilterChange: (key: string, value: string) => void;
   onSearchChange?: (value: string) => void;
   onClear: () => void;
-  /** Export CSV link; carries the current filters forward via its own query string set by the caller. */
-  exportHref: string;
+  /** Export CSV link; carries the current filters forward via its own query string set by the caller. Omit for lists with no export. */
+  exportHref?: string;
 }) {
   const hasActiveFilters =
     (search && search.value) || filters.some((f) => values[f.key]);
@@ -71,12 +71,14 @@ export function ListFilterBar({
           Clear filters
         </button>
       )}
-      <a
-        href={exportHref}
-        className="ml-auto rounded-md border bg-background px-3 py-1.5 text-sm hover:border-primary/50"
-      >
-        Export CSV
-      </a>
+      {exportHref && (
+        <a
+          href={exportHref}
+          className="ml-auto rounded-md border bg-background px-3 py-1.5 text-sm hover:border-primary/50"
+        >
+          Export CSV
+        </a>
+      )}
     </div>
   );
 }

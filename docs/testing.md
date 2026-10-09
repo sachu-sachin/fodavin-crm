@@ -25,7 +25,7 @@ npm run test:e2e:report  # Re-open the last Playwright HTML report
 
 Config: [vitest.config.ts](../vitest.config.ts). Setup/fixtures: [test/setup.ts](../test/setup.ts). Tests live next to the code they cover, as `*.test.ts`.
 
-**What's covered today**: every pure-logic module in `src/lib/` (permissions, IST date formatting, week arithmetic, renewal status, crypto, nav), the auth guard functions in `src/lib/auth.ts`, and the server actions in `src/lib/actions/{auth,finance,timesheet,crm,admin}.ts`. Not yet covered: `projects.ts`, `social.ts`, `documents.ts`, `google.ts` actions, and `drive.ts` — same pattern applies, just hasn't been done yet.
+**What's covered today**: every pure-logic module in `src/lib/` (permissions, IST date formatting, week arithmetic, renewal status, crypto, nav), the auth guard functions in `src/lib/auth.ts`, the server actions in `src/lib/actions/{auth,finance,timesheet,crm,admin,meetings}.ts`, and the task actions in `projects.ts`. Not yet covered: the project actions in `projects.ts`, `social.ts`, `documents.ts`, `google.ts` actions, and `drive.ts` — same pattern applies, just hasn't been done yet.
 
 **Mocking conventions** — copy these from an existing file rather than reinventing them:
 
@@ -44,7 +44,7 @@ Config: [vitest.config.ts](../vitest.config.ts). Setup/fixtures: [test/setup.ts]
 
 Config: [playwright.config.ts](../playwright.config.ts). Tests live in [e2e/](../e2e/). Shared helpers in [e2e/helpers.ts](../e2e/helpers.ts).
 
-**Covers every module**: login, auth redirects, CRM (companies + contacts), Pipeline (inquiries, stage changes via both the edit dialog and real drag-and-drop, convert-to-project), Projects (CRUD, payment milestones), Tasks (CRUD, drag-and-drop), Timesheet (logging hours, the 24h cap, copy-last-week), Social (posts, drag-and-drop), Employees and Roles (admin), Team, Settings, and the Dashboard — plus `data-api.spec.ts`, which checks that Supabase's Data API returns nothing from any app table, either to the anon key or to a signed-in user's own token (see Finding 11).
+**Covers every module**: login, auth redirects, CRM (companies + contacts), Pipeline (inquiries, stage changes via both the edit dialog and real drag-and-drop, convert-to-project), Projects (CRUD, payment milestones), Tasks (CRUD, drag-and-drop), Timesheet (logging hours, the 24h cap, copy-last-week), Social (posts, drag-and-drop), Meetings (scheduling, in-place notes, action items reaching the task board, scheduling from a client page, search), Employees and Roles (admin), Team, Settings, and the Dashboard — plus `data-api.spec.ts`, which checks that Supabase's Data API returns nothing from any app table, either to the anon key or to a signed-in user's own token (see Finding 11).
 
 ### It runs against a dedicated test Supabase project — set up once
 

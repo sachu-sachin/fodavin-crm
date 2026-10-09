@@ -176,15 +176,39 @@ export async function deleteProject(formData: FormData): Promise<void> {
 
 // -- Tasks --------------------------------------------------------------------
 
+/** Refresh every page that lists this task. */
+function revalidateTask(task: {
+  project_id: string | null;
+  meeting_id: string | null;
+}) {
+  revalidatePath("/tasks");
+  if (task.project_id) revalidatePath(`/projects/${task.project_id}`);
+  if (task.meeting_id) revalidatePath(`/meetings/${task.meeting_id}`);
+}
+
 export async function createTask(
   _prev: ProjectState,
   formData: FormData,
 ): Promise<ProjectState> {
   const userId = await requireUserId("tasks.manage");
   if (!userId) return { error: DENIED_MESSAGE };
-  const projectId = String(formData.get("project_id") ?? "");
+  let projectId = str(formData.get("project_id"));
+  const meetingId = str(formData.get("meeting_id"));
   const title = String(formData.get("title") ?? "").trim();
-  if (!projectId) return { error: "Pick a project." };
+
+  // A meeting's action item takes the meeting's project, if it has one; an
+  // internal meeting's action items have no project. Every other task must
+  // belong to a project.
+  if (meetingId) {
+    const meeting = await prisma.meeting.findUnique({
+      where: { id: meetingId },
+      select: { project_id: true },
+    });
+    if (!meeting) return { error: "That meeting no longer exists." };
+    projectId ??= meeting.project_id;
+  } else if (!projectId) {
+    return { error: "Pick a project." };
+  }
   if (!title) return { error: "Task title is required." };
 
   const type = String(formData.get("type") ?? "general") as TaskType;
@@ -193,6 +217,7 @@ export async function createTask(
   await prisma.task.create({
     data: {
       project_id: projectId,
+      meeting_id: meetingId,
       title,
       description: str(formData.get("description")),
       type: TASK_TYPE.has(type) ? type : "general",
@@ -203,8 +228,7 @@ export async function createTask(
     },
   });
 
-  revalidatePath("/tasks");
-  revalidatePath(`/projects/${projectId}`);
+  revalidateTask({ project_id: projectId, meeting_id: meetingId });
   return { success: `Task "${title}" added.` };
 }
 
@@ -214,14 +238,13 @@ export async function updateTask(
 ): Promise<ProjectState> {
   if (!(await requireUserId("tasks.manage"))) return { error: DENIED_MESSAGE };
   const id = String(formData.get("id") ?? "");
-  const projectId = String(formData.get("project_id") ?? "");
   const title = String(formData.get("title") ?? "").trim();
   if (!title) return { error: "Task title is required." };
 
   const type = String(formData.get("type") ?? "general") as TaskType;
   const status = String(formData.get("status") ?? "todo") as TaskStatus;
 
-  await prisma.task.update({
+  const task = await prisma.task.update({
     where: { id },
     data: {
       title,
@@ -231,20 +254,21 @@ export async function updateTask(
       assignee_id: str(formData.get("assignee_id")),
       due_date: parseDate(formData.get("due_date")),
     },
+    select: { project_id: true, meeting_id: true },
   });
 
-  revalidatePath("/tasks");
-  if (projectId) revalidatePath(`/projects/${projectId}`);
+  revalidateTask(task);
   return { success: "Task updated." };
 }
 
 export async function deleteTask(formData: FormData): Promise<void> {
   if (!(await requireUserId("tasks.manage"))) return;
   const id = String(formData.get("id") ?? "");
-  const projectId = String(formData.get("project_id") ?? "");
-  await prisma.task.delete({ where: { id } });
-  revalidatePath("/tasks");
-  if (projectId) revalidatePath(`/projects/${projectId}`);
+  const task = await prisma.task.delete({
+    where: { id },
+    select: { project_id: true, meeting_id: true },
+  });
+  revalidateTask(task);
 }
 
 /** Move a task to a different status column (Kanban DnD). */
@@ -257,8 +281,7 @@ export async function moveTaskStatus(
   const task = await prisma.task.update({
     where: { id },
     data: { status },
-    select: { project_id: true },
+    select: { project_id: true, meeting_id: true },
   });
-  revalidatePath("/tasks");
-  if (task.project_id) revalidatePath(`/projects/${task.project_id}`);
+  revalidateTask(task);
 }

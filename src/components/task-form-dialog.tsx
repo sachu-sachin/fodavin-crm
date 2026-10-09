@@ -26,6 +26,7 @@ export function TaskFormDialog({
   assignees,
   projects,
   fixedProjectId,
+  fixedMeetingId,
   defaultStatus = "todo",
   trigger,
   nativeTrigger = true,
@@ -34,6 +35,8 @@ export function TaskFormDialog({
   assignees: { id: string; name: string }[];
   projects?: { id: string; name: string }[];
   fixedProjectId?: string;
+  /** Create the task as an action item of this meeting (inherits its project). */
+  fixedMeetingId?: string;
   defaultStatus?: TaskStatus;
   trigger: React.ReactElement;
   nativeTrigger?: boolean;
@@ -65,7 +68,6 @@ export function TaskFormDialog({
     startTransition(async () => {
       const fd = new FormData();
       fd.set("id", task.id);
-      if (task.project_id) fd.set("project_id", task.project_id);
       await deleteTask(fd);
       toast.success("Task deleted");
       markClean();
@@ -79,12 +81,21 @@ export function TaskFormDialog({
       <DialogTrigger nativeButton={nativeTrigger} render={trigger} />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit task" : "New task"}</DialogTitle>
+          <DialogTitle>
+            {isEdit
+              ? "Edit task"
+              : fixedMeetingId
+                ? "New action item"
+                : "New task"}
+          </DialogTitle>
         </DialogHeader>
         <form ref={formRef} action={onAction} className="space-y-4">
           {isEdit && <input type="hidden" name="id" value={task.id} />}
           {projectId && (
             <input type="hidden" name="project_id" value={projectId} />
+          )}
+          {fixedMeetingId && !isEdit && (
+            <input type="hidden" name="meeting_id" value={fixedMeetingId} />
           )}
 
           <div className="space-y-2">
@@ -97,7 +108,7 @@ export function TaskFormDialog({
             />
           </div>
 
-          {!fixedProjectId && !isEdit && projects && (
+          {!fixedProjectId && !fixedMeetingId && !isEdit && projects && (
             <div className="space-y-2">
               <Label htmlFor="project_id">Project</Label>
               <select
@@ -206,7 +217,13 @@ export function TaskFormDialog({
               <span />
             )}
             <Button type="submit" disabled={pending}>
-              {pending ? "Saving…" : isEdit ? "Save changes" : "Create task"}
+              {pending
+                ? "Saving…"
+                : isEdit
+                  ? "Save changes"
+                  : fixedMeetingId
+                    ? "Add action item"
+                    : "Create task"}
             </Button>
           </DialogFooter>
         </form>

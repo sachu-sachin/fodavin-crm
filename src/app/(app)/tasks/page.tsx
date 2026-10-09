@@ -13,7 +13,10 @@ export default async function TasksPage() {
   await requirePermission("tasks.view");
   const [rawTasks, profiles, projects] = await Promise.all([
     prisma.task.findMany({
-      include: { project: { select: { name: true } } },
+      include: {
+        project: { select: { name: true } },
+        meeting: { select: { title: true } },
+      },
       orderBy: { created_at: "asc" },
     }),
     prisma.profile.findMany({
@@ -32,9 +35,10 @@ export default async function TasksPage() {
     name: p.full_name || p.email?.split("@")[0] || "User",
   }));
 
-  const tasks: BoardTask[] = rawTasks.map((t) => ({
+  const tasks: BoardTask[] = rawTasks.map(({ project, meeting, ...t }) => ({
     ...t,
-    project_name: t.project?.name ?? null,
+    project_name: project?.name ?? null,
+    meeting_title: meeting?.title ?? null,
     due_date: dateStr(t.due_date),
     created_at: t.created_at.toISOString(),
     updated_at: t.updated_at.toISOString(),
@@ -55,7 +59,7 @@ export default async function TasksPage() {
         )}
       </PageHeader>
 
-      {projects.length === 0 ? (
+      {projects.length === 0 && tasks.length === 0 ? (
         <div className="rounded-lg border border-dashed bg-card p-10 text-center">
           <p className="text-sm font-medium">No projects yet</p>
           <p className="mt-1 text-sm text-muted-foreground">

@@ -141,6 +141,13 @@ enum PostStatus {
   cancelled
 }
 
+enum MeetingType {
+  internal
+  client
+  standup
+  review
+}
+
 enum PostCategory {
   brand_awareness
   services
@@ -178,10 +185,11 @@ model Profile {
   is_active  Boolean  @default(true)
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
-  role           Role?        @relation(fields: [role_id], references: [id], onDelete: SetNull)
-  assigned_tasks Task[]       @relation("TaskAssignee")
-  assigned_posts SocialPost[] @relation("PostAssignee")
+  role           Role?             @relation(fields: [role_id], references: [id], onDelete: SetNull)
+  assigned_tasks Task[]            @relation("TaskAssignee")
+  assigned_posts SocialPost[]      @relation("PostAssignee")
   time_entries   TimeEntry[]
+  meetings       MeetingAttendee[]
 
   @@index([role_id])
   @@map("profiles")
@@ -204,6 +212,7 @@ model Company {
   projects     Project[]
   social_posts SocialPost[]
   documents    Document[]
+  meetings     Meeting[]
 
   @@map("companies")
 }
@@ -295,6 +304,7 @@ model Project {
   milestones   PaymentMilestone[]
   documents    Document[]
   time_entries TimeEntry[]
+  meetings     Meeting[]
 
   @@index([company_id])
   @@index([inquiry_id])
@@ -310,6 +320,9 @@ model Task {
   type        TaskType   @default(general)
   status      TaskStatus @default(todo)
   assignee_id String?    @db.Uuid
+  /// Set when the task is an action item from a meeting. Such a task may have
+  /// no project (an internal meeting); it still lives on the normal boards.
+  meeting_id  String?    @db.Uuid
   position    Int        @default(0)
   due_date    DateTime?  @db.Date
   created_by  String?    @db.Uuid
@@ -318,11 +331,60 @@ model Task {
 
   project  Project? @relation(fields: [project_id], references: [id], onDelete: Cascade)
   assignee Profile? @relation("TaskAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
+  /// SetNull, not Cascade: deleting a meeting's record must not silently
+  /// delete the work that came out of it.
+  meeting  Meeting? @relation(fields: [meeting_id], references: [id], onDelete: SetNull)
 
   @@index([project_id])
   @@index([assignee_id])
+  @@index([meeting_id])
   @@index([status])
   @@map("tasks")
+}
+
+/// A meeting: who was there, what was discussed and decided. Its action items
+/// are ordinary Tasks (Task.meeting_id), so they show up on the task boards and
+/// the dashboard rather than in a second to-do list nobody checks.
+model Meeting {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title            String
+  type             MeetingType @default(internal)
+  starts_at        DateTime    @db.Timestamptz(6)
+  duration_minutes Int?
+  /// A room, an address or a call link (Meet / Zoom / Teams).
+  location         String?
+  company_id       String?     @db.Uuid
+  project_id       String?     @db.Uuid
+  agenda           String?
+  notes            String?
+  decisions        String?
+  created_by       String?     @db.Uuid
+  created_at       DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime    @default(now()) @db.Timestamptz(6)
+
+  company      Company?          @relation(fields: [company_id], references: [id], onDelete: SetNull)
+  project      Project?          @relation(fields: [project_id], references: [id], onDelete: SetNull)
+  attendees    MeetingAttendee[]
+  action_items Task[]
+
+  @@index([starts_at])
+  @@index([company_id])
+  @@index([project_id])
+  @@map("meetings")
+}
+
+/// Team members attending a meeting. Client-side attendees go in the notes;
+/// they aren't accounts in this app.
+model MeetingAttendee {
+  meeting_id String @db.Uuid
+  profile_id String @db.Uuid
+
+  meeting Meeting @relation(fields: [meeting_id], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@id([meeting_id, profile_id])
+  @@index([profile_id])
+  @@map("meeting_attendees")
 }
 
 /// The single agency Google account that Drive uploads are written to.

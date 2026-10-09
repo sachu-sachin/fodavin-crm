@@ -7,7 +7,7 @@ import {
   RENEWAL_WINDOW_DAYS,
   UNPAID_MILESTONE_STATUSES,
 } from "@/lib/types";
-import { formatDateKey, formatINR, istToday } from "@/lib/format";
+import { formatDateKey, formatINR, formatTimeIST, istToday } from "@/lib/format";
 import { RENEWAL_TONE, renewalStatus } from "@/lib/renewals";
 import { addDays } from "@/lib/week";
 import { PageHeader } from "@/components/page-header";
@@ -23,10 +23,12 @@ export default async function DashboardPage() {
   if (!session) redirect("/login");
   const showMoney = can(session, "finance.view");
   const showRenewals = can(session, "projects.view");
+  const showMeetings = can(session, "meetings.view");
 
   const today = istToday();
   // End-of-day in IST, so something dated today counts as due now rather
   // than tomorrow.
+  const startOfToday = new Date(`${today}T00:00:00+05:30`);
   const endOfToday = new Date(`${today}T23:59:59+05:30`);
   const renewalHorizon = new Date(
     `${addDays(today, RENEWAL_WINDOW_DAYS)}T23:59:59+05:30`,
@@ -43,6 +45,7 @@ export default async function DashboardPage() {
     unpaidMilestones,
     renewalProjects,
     myTasks,
+    todaysMeetings,
   ] = await Promise.all([
     prisma.company.count(),
     prisma.inquiry.count({ where: { stage: { notIn: ["won", "lost"] } } }),
@@ -107,10 +110,27 @@ export default async function DashboardPage() {
         title: true,
         due_date: true,
         project: { select: { id: true, name: true } },
+        meeting_id: true,
       },
       orderBy: { due_date: "asc" },
       take: 5,
     }),
+    showMeetings
+      ? prisma.meeting.findMany({
+          where: { starts_at: { gte: startOfToday, lte: endOfToday } },
+          select: {
+            id: true,
+            title: true,
+            starts_at: true,
+            company: { select: { name: true } },
+            attendees: {
+              where: { profile_id: session.userId },
+              select: { profile_id: true },
+            },
+          },
+          orderBy: { starts_at: "asc" },
+        })
+      : [],
   ]);
 
   const outstanding = Number(outstandingTotal._sum.amount ?? 0);
@@ -197,7 +217,13 @@ export default async function DashboardPage() {
               return (
                 <DashboardRow
                   key={task.id}
-                  href={task.project ? `/projects/${task.project.id}` : "/tasks"}
+                  href={
+                    task.project
+                      ? `/projects/${task.project.id}`
+                      : task.meeting_id
+                        ? `/meetings/${task.meeting_id}`
+                        : "/tasks"
+                  }
                   primary={task.title}
                   secondary={task.project?.name}
                   trailing={
@@ -213,6 +239,34 @@ export default async function DashboardPage() {
               );
             })}
         </DashboardCard>
+
+        {showMeetings && (
+        <DashboardCard
+          title="Today's meetings"
+          count={todaysMeetings.length}
+          tone="warn"
+          empty="No meetings today."
+        >
+          {todaysMeetings.length > 0 &&
+            todaysMeetings.map((m) => (
+              <DashboardRow
+                key={m.id}
+                href={`/meetings/${m.id}`}
+                primary={m.title}
+                secondary={
+                  [m.company?.name, m.attendees.length > 0 ? "You're attending" : null]
+                    .filter(Boolean)
+                    .join(" · ") || null
+                }
+                trailing={
+                  <span className="text-xs text-muted-foreground">
+                    {formatTimeIST(m.starts_at.toISOString())}
+                  </span>
+                }
+              />
+            ))}
+        </DashboardCard>
+        )}
 
         {showRenewals && (
         <DashboardCard

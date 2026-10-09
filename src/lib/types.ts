@@ -69,6 +69,8 @@ export type TaskType =
   | "devops"
   | "general";
 
+export type MeetingType = "internal" | "client" | "standup" | "review";
+
 export type SocialPlatform =
   | "instagram"
   | "facebook"
@@ -199,11 +201,48 @@ export interface Task {
   type: TaskType;
   status: TaskStatus;
   assignee_id: string | null;
+  /** Set when the task is an action item from a meeting. */
+  meeting_id: string | null;
   position: number;
   due_date: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Meeting {
+  id: string;
+  title: string;
+  type: MeetingType;
+  /** ISO instant. */
+  starts_at: string;
+  duration_minutes: number | null;
+  location: string | null;
+  company_id: string | null;
+  project_id: string | null;
+  agenda: string | null;
+  notes: string | null;
+  decisions: string | null;
+  /** Profile ids of the team members attending. */
+  attendee_ids: string[];
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A meeting as shown in lists (meetings page, client/project pages, dashboard). */
+export interface MeetingListItem {
+  id: string;
+  title: string;
+  type: MeetingType;
+  /** ISO instant. */
+  starts_at: string;
+  company_id: string | null;
+  company_name: string | null;
+  project_id: string | null;
+  project_name: string | null;
+  attendee_count: number;
+  open_action_count: number;
 }
 
 export interface DocumentRecord {
@@ -407,6 +446,16 @@ export const TASK_TYPES: { value: TaskType; label: string }[] = [
   { value: "devops", label: "DevOps" },
   { value: "general", label: "General" },
 ];
+
+export const MEETING_TYPES: { value: MeetingType; label: string }[] = [
+  { value: "internal", label: "Internal" },
+  { value: "client", label: "Client" },
+  { value: "standup", label: "Standup" },
+  { value: "review", label: "Review" },
+];
+
+/** Durations offered in the meeting form, in minutes. */
+export const MEETING_DURATIONS = [15, 30, 45, 60, 90, 120] as const;
 
 export const SOCIAL_PLATFORMS: { value: SocialPlatform; label: string }[] = [
   { value: "instagram", label: "Instagram" },
