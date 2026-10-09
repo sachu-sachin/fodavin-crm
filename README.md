@@ -119,6 +119,8 @@ supabase/setup.sql         Auth triggers (create/delete), is_admin(), RLS, updat
 
 ## Deploy to Vercel
 
+> Moving to your own server instead? Follow [docs/deploy-vps.md](docs/deploy-vps.md).
+
 1. Push this repo to GitHub, then **Import Project** in Vercel (framework auto-detected as Next.js).
 2. Add the following **Environment Variables** (Project → Settings → Environment Variables), for Production and Preview:
 
