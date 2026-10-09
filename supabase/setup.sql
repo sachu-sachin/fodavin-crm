@@ -1,11 +1,11 @@
 -- Fodavin Business OS — Supabase-specific setup
--- Run this ONCE, AFTER `prisma migrate deploy` has created the public tables.
+-- Run this AFTER Prisma has created the public tables, and again after every
+-- schema change (it is idempotent, and section 3 locks down new tables).
 --   npm run db:setup   (or paste into the Supabase SQL Editor)
 --
 -- Prisma owns the tables/columns/enums. This file adds the things Prisma
--- doesn't model: the auth.users link + signup trigger, the is_admin() helper,
--- Row Level Security (protects the public anon key at the PostgREST layer),
--- and updated_at maintenance.
+-- doesn't model: the auth.users link + signup trigger, updated_at
+-- maintenance, and the lock that keeps Supabase's Data API out of app data.
 
 -- ---------------------------------------------------------------------------
 -- 1. Sync profiles with auth.users via triggers.
@@ -60,25 +60,7 @@ create trigger on_auth_user_deleted
   for each row execute function public.handle_user_delete();
 
 -- ---------------------------------------------------------------------------
--- 2. Admin check (used by RLS). SECURITY DEFINER avoids RLS recursion.
--- ---------------------------------------------------------------------------
-create or replace function public.is_admin()
-returns boolean
-language sql
-security definer
-set search_path = public
-stable
-as $$
-  select exists (
-    select 1
-    from public.profiles p
-    join public.roles r on r.id = p.role_id
-    where p.id = auth.uid() and r.is_admin
-  );
-$$;
-
--- ---------------------------------------------------------------------------
--- 3. updated_at maintenance
+-- 2. updated_at maintenance
 -- ---------------------------------------------------------------------------
 create or replace function public.set_updated_at()
 returns trigger
@@ -103,63 +85,64 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- 4. Row Level Security
--- App data access goes through Prisma (postgres role, bypasses RLS). These
--- policies protect the *public anon/authenticated keys* exposed via PostgREST.
+-- 3. Keep Supabase's Data API (PostgREST / GraphQL) out of app data.
+--
+-- The app never touches table data through the Data API: every query goes
+-- through Prisma as the `postgres` role (which bypasses RLS) and is
+-- authorised in server code against the role permissions in
+-- src/lib/permissions.ts. The Data API, however, answers anyone holding the
+-- public anon key — plus, once signed in, the employee's own access token,
+-- which the browser can read. Any policy or grant to `anon`/`authenticated`
+-- here is therefore a way around the role permissions (e.g. a developer
+-- reading payment_milestones straight from /rest/v1).
+--
+-- Rule: RLS on, no policies, no grants. The loop covers every table in
+-- `public`, so tables added later are locked as soon as this file is re-run,
+-- and the default-privilege change stops them being exposed in the meantime.
 -- ---------------------------------------------------------------------------
-alter table public.roles      enable row level security;
-alter table public.profiles   enable row level security;
-alter table public.companies  enable row level security;
-alter table public.contacts   enable row level security;
-alter table public.inquiries    enable row level security;
-alter table public.projects     enable row level security;
-alter table public.tasks        enable row level security;
-alter table public.social_posts enable row level security;
-alter table public.payment_milestones enable row level security;
-alter table public.documents  enable row level security;
-alter table public.time_entries enable row level security;
+do $$
+declare t text;
+begin
+  for t in select tablename from pg_tables where schemaname = 'public'
+  loop
+    execute format('alter table public.%I enable row level security', t);
+  end loop;
+end $$;
 
--- Roles: readable by team; managed by admins.
+revoke all on all tables    in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+
+alter default privileges for role postgres in schema public
+  revoke all on tables from anon, authenticated;
+alter default privileges for role postgres in schema public
+  revoke all on sequences from anon, authenticated;
+
+-- Remove the permissive policies earlier versions of this file created.
 drop policy if exists "roles readable by team" on public.roles;
-create policy "roles readable by team" on public.roles
-  for select to authenticated using (true);
 drop policy if exists "admins manage roles" on public.roles;
-create policy "admins manage roles" on public.roles
-  for all to authenticated using (public.is_admin()) with check (public.is_admin());
-
--- Profiles: team directory readable; only admins mutate.
 drop policy if exists "profiles readable by team" on public.profiles;
-create policy "profiles readable by team" on public.profiles
-  for select to authenticated using (true);
 drop policy if exists "admins insert profiles" on public.profiles;
-create policy "admins insert profiles" on public.profiles
-  for insert to authenticated with check (public.is_admin());
 drop policy if exists "admins update profiles" on public.profiles;
-create policy "admins update profiles" on public.profiles
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
 drop policy if exists "admins delete profiles" on public.profiles;
-create policy "admins delete profiles" on public.profiles
-  for delete to authenticated using (public.is_admin());
 
--- Work data: full CRUD for any authenticated employee.
 do $$
 declare t text;
 begin
   foreach t in array array['companies', 'contacts', 'inquiries', 'projects', 'tasks', 'social_posts', 'payment_milestones', 'documents', 'time_entries']
   loop
     execute format('drop policy if exists "team full access" on public.%I', t);
-    execute format(
-      'create policy "team full access" on public.%I
-         for all to authenticated using (true) with check (true)', t);
   end loop;
 end $$;
 
+-- Only those policies used it.
+drop function if exists public.is_admin();
+
 -- ---------------------------------------------------------------------------
--- 5. Storage: private `documents` bucket for uploaded files.
+-- 4. Storage: private `documents` bucket for uploaded files.
 -- The app uploads with the service-role key and serves files exclusively
 -- through short-lived signed URLs (/api/documents/[id]), so the bucket must
--- stay private. These policies are the safety net for the anon/authenticated
--- keys, matching the "any signed-in employee" model used for table data.
+-- stay private and, as with table data, carries no policies for the
+-- anon/authenticated keys.
 -- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('documents', 'documents', false, 10485760)
@@ -168,17 +151,6 @@ on conflict (id) do update
       file_size_limit = excluded.file_size_limit;
 
 drop policy if exists "team reads documents" on storage.objects;
-create policy "team reads documents" on storage.objects
-  for select to authenticated using (bucket_id = 'documents');
-
 drop policy if exists "team writes documents" on storage.objects;
-create policy "team writes documents" on storage.objects
-  for insert to authenticated with check (bucket_id = 'documents');
-
 drop policy if exists "team updates documents" on storage.objects;
-create policy "team updates documents" on storage.objects
-  for update to authenticated using (bucket_id = 'documents');
-
 drop policy if exists "team deletes documents" on storage.objects;
-create policy "team deletes documents" on storage.objects
-  for delete to authenticated using (bucket_id = 'documents');

@@ -22,7 +22,7 @@ We are eliminating Docker, custom Node backends, and complex hosting. The entire
   - *Auth:* Email + password (accounts are admin-created; no public sign-up).
   - *Database:* Serverless PostgreSQL for all data storage.
   - *Storage:* Free bucket for uploading client files or assets.
-  - *Row Level Security (RLS):* Kept enabled as a safety net over the public `anon` key (PostgREST), even though Prisma is the primary access path.
+  - *Row Level Security (RLS):* Enabled on every table with no policies, so the public `anon` key and employees' own tokens can't reach app data through PostgREST; Prisma is the only access path.
 
 **Hosting:**
 - **Vercel (Free Tier):** One-click deployment directly from GitHub. Automatic CI/CD built-in.
@@ -73,9 +73,9 @@ Do not waste engineering hours building these right now. Use these free tools al
 
 ## 4. Security & Permissions
 - **Authentication:** Supabase Auth with **email + password**. Accounts are created by an admin via the Admin API (service-role key, server-only); there is no public sign-up. The first admin is bootstrapped with `scripts/create-admin.mjs`.
-- **Authorization:** Supabase Row Level Security (RLS) with an **"Admin vs. team"** model:
-  - Any authenticated employee: full CRUD on companies, contacts, inquiries, projects and tasks.
-  - **Admins only** (role has `is_admin = true`): create/manage employees, assign roles, and create/edit roles. Enforced by an `is_admin()` SQL helper used in the RLS policies for `profiles` and `roles`.
+- **Authorization:** admin-defined roles carrying granular permissions (`src/lib/permissions.ts`), enforced in server code on every page and server action. A role with `is_admin = true` holds every permission.
+- **Data API locked:** all data access goes through Prisma on the server, so Supabase's Data API exposes nothing — RLS on every table with no policies, and no table grants to the `anon`/`authenticated` roles (`supabase/setup.sql`). Otherwise an employee could use their own access token to bypass their role.
+- **Backups:** encrypted nightly `pg_dump` via GitHub Actions (`docs/backups.md`).
 
 ---
 

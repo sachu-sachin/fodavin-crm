@@ -21,9 +21,10 @@ India-first: all dates/times render in **IST (Asia/Kolkata)** and money in **₹
 
 ### Data architecture
 
-- **Supabase = identity + safety net.** Handles login/sessions. RLS stays enabled on every table to protect the public `anon` key at the PostgREST layer.
-- **Prisma = all app data access.** Connects as the `postgres` role via the pooler (bypasses RLS), so authorization is enforced in server code (`requireAdmin` / `getSessionProfile`).
-- Prisma owns the tables/columns/enums; Supabase-specific wiring (auth FK, profile-on-signup trigger, `is_admin()`, RLS, `updated_at`) lives in [supabase/setup.sql](supabase/setup.sql).
+- **Supabase = identity.** Handles login/sessions. Its Data API (PostgREST/GraphQL) is **locked out of app data**: RLS is on for every table with no policies, and the `anon`/`authenticated` roles have no table grants. Anyone can hold the public anon key, and a signed-in employee can read their own access token from the browser, so any access there would bypass the role permissions below.
+- **Prisma = all app data access.** Connects as the `postgres` role via the pooler (bypasses RLS), so authorization is enforced in server code (`authorize` / `requirePermission` / `requireAdmin`) — that is the only access boundary.
+- Prisma owns the tables/columns/enums; Supabase-specific wiring (profile-on-signup trigger, `updated_at`, the Data API lock) lives in [supabase/setup.sql](supabase/setup.sql). **Re-run `npm run db:setup` after every schema change** so new tables are locked too.
+- **Backups:** an encrypted nightly `pg_dump` runs as a GitHub Action — setup and restore steps in [docs/backups.md](docs/backups.md).
 
 ## Access model
 
@@ -57,7 +58,7 @@ India-first: all dates/times render in **IST (Asia/Kolkata)** and money in **₹
 ```bash
 npm install       # runs `prisma generate`
 npm run db:push   # create tables/enums in Supabase (Prisma)
-npm run db:setup  # apply supabase/setup.sql (auth trigger, is_admin, RLS, updated_at)
+npm run db:setup  # apply supabase/setup.sql (auth trigger, updated_at, Data API lock)
 npm run db:seed   # seed the default roles
 ```
 
@@ -105,7 +106,7 @@ prisma/
   schema.prisma       Models, enums, relations
   seed.mjs            Default roles
 scripts/create-admin.mjs   First-admin bootstrap
-supabase/setup.sql         Auth triggers (create/delete), is_admin(), RLS, updated_at
+supabase/setup.sql         Auth triggers (create/delete), updated_at, Data API lock
 ```
 
 ### Handy scripts
@@ -113,7 +114,7 @@ supabase/setup.sql         Auth triggers (create/delete), is_admin(), RLS, updat
 | Command | What it does |
 |---------|--------------|
 | `npm run db:push` | Sync the Prisma schema to the database |
-| `npm run db:setup` | Apply `supabase/setup.sql` (auth + RLS) |
+| `npm run db:setup` | Apply `supabase/setup.sql` (auth triggers + Data API lock) — re-run after every schema change |
 | `npm run db:seed` | Seed default roles |
 | `npm run db:studio` | Open Prisma Studio |
 
