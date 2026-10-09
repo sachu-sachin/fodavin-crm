@@ -41,6 +41,7 @@ key** rather than your personal GitHub login. A deploy key opens this one
 repository and nothing else, and can be revoked on its own:
 
 ```bash
+sudo -u fodavin install -d -m 700 /srv/fodavin/.ssh
 sudo -u fodavin ssh-keygen -t ed25519 -N "" -f /srv/fodavin/.ssh/id_ed25519
 sudo cat /srv/fodavin/.ssh/id_ed25519.pub
 ```
