@@ -69,7 +69,9 @@ test.describe("Roles (admin)", () => {
     await page.goto("/roles");
     await page.getByLabel("Role name").fill(roleName);
     await page.getByRole("button", { name: "Add role" }).click();
-    await expect(page.getByText(roleName)).toBeVisible();
+    // Exact: the 'Role "…" created.' toast also contains the name, and
+    // whether it's on screen at the same moment as the card is timing.
+    await expect(page.getByText(roleName, { exact: true })).toBeVisible();
     // React 19 resets a <form action={fn}> on a successful submission —
     // without a settle pause here, the reset can land after this test's own
     // re-fill of the same field, wiping it back to empty before the second
