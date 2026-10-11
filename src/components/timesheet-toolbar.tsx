@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
 import { copyPreviousWeek } from "@/lib/actions/timesheet";
+import { useTimesheetNavigation } from "@/components/timesheet-navigation";
 import { Button } from "@/components/ui/button";
 
 export function TimesheetToolbar({
@@ -29,13 +30,19 @@ export function TimesheetToolbar({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // While a week change is in flight this toolbar still holds the old week's
+  // props, so everything here stays disabled — otherwise a quick "Next week"
+  // then "Copy last week" would copy into the week being left, and a second
+  // "Next week" would skip one. The grid locks on the same signal.
+  const { navigating, navigate } = useTimesheetNavigation();
+  const busy = pending || navigating;
 
   const isCurrentWeek = weekStart === currentWeekStart;
 
   function go(week: string, person = profileId) {
     const params = new URLSearchParams({ week });
     if (canSwitchPerson) params.set("person", person);
-    router.push(`/timesheet?${params}`);
+    navigate(`/timesheet?${params}`);
   }
 
   function onCopy() {
@@ -54,23 +61,32 @@ export function TimesheetToolbar({
   }
 
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div
+      className="mb-4 flex flex-wrap items-center justify-between gap-3"
+      aria-busy={busy}
+    >
       <div className="flex items-center gap-2">
         <Button
           variant="outline"
           size="sm"
           onClick={() => go(previousWeekStart)}
+          disabled={busy}
           aria-label="Previous week"
         >
           ←
         </Button>
-        <span className="min-w-[10rem] text-center text-sm font-medium">
+        <span
+          className={`min-w-[10rem] text-center text-sm font-medium transition-opacity ${
+            navigating ? "opacity-50" : ""
+          }`}
+        >
           {rangeLabel}
         </span>
         <Button
           variant="outline"
           size="sm"
           onClick={() => go(nextWeekStart)}
+          disabled={busy}
           aria-label="Next week"
         >
           →
@@ -80,6 +96,7 @@ export function TimesheetToolbar({
             variant="ghost"
             size="sm"
             onClick={() => go(currentWeekStart)}
+            disabled={busy}
           >
             This week
           </Button>
@@ -91,6 +108,7 @@ export function TimesheetToolbar({
           <select
             value={profileId}
             onChange={(e) => go(weekStart, e.target.value)}
+            disabled={busy}
             aria-label="Whose timesheet"
             className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
           >
@@ -106,7 +124,7 @@ export function TimesheetToolbar({
             variant="outline"
             size="sm"
             onClick={onCopy}
-            disabled={pending}
+            disabled={busy}
           >
             {pending ? "Copying…" : "Copy last week"}
           </Button>

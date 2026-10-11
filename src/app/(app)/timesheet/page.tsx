@@ -16,6 +16,7 @@ import {
   type HoursMap,
 } from "@/components/timesheet-grid";
 import { TimesheetToolbar } from "@/components/timesheet-toolbar";
+import { TimesheetNavigation } from "@/components/timesheet-navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -115,24 +116,28 @@ export default async function TimesheetPage({
         }
       />
 
-      <TimesheetToolbar
-        weekStart={weekStart}
-        previousWeekStart={addDays(weekStart, -DAYS_IN_WEEK)}
-        nextWeekStart={addDays(weekStart, DAYS_IN_WEEK)}
-        currentWeekStart={currentWeekStart()}
-        rangeLabel={weekRangeLabel(weekStart)}
-        profileId={profileId}
-        people={people.map((p) => ({ id: p.id, name: displayName(p) }))}
-        canSwitchPerson={session.isAdmin}
-        readOnly={false}
-      />
+      {/* One navigation state for both, so the grid locks too while the
+          toolbar is moving to another week or person. */}
+      <TimesheetNavigation>
+        <TimesheetToolbar
+          weekStart={weekStart}
+          previousWeekStart={addDays(weekStart, -DAYS_IN_WEEK)}
+          nextWeekStart={addDays(weekStart, DAYS_IN_WEEK)}
+          currentWeekStart={currentWeekStart()}
+          rangeLabel={weekRangeLabel(weekStart)}
+          profileId={profileId}
+          people={people.map((p) => ({ id: p.id, name: displayName(p) }))}
+          canSwitchPerson={session.isAdmin}
+          readOnly={false}
+        />
 
-      <TimesheetGrid
-        projects={gridProjects}
-        days={days}
-        initialHours={initialHours}
-        profileId={profileId}
-      />
+        <TimesheetGrid
+          projects={gridProjects}
+          days={days}
+          initialHours={initialHours}
+          profileId={profileId}
+        />
+      </TimesheetNavigation>
     </div>
   );
 }
