@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { saveTimeEntry } from "@/lib/actions/timesheet";
 import { MAX_HOURS_PER_DAY } from "@/lib/types";
 import type { WeekDay } from "@/lib/week";
+import { useTimesheetNavigation } from "@/components/timesheet-navigation";
 
 export interface GridProject {
   id: string;
@@ -51,6 +52,9 @@ export function TimesheetGrid({
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  // Locked while the page moves to another week or person: these cells
+  // still belong to the week being left, so typing now would save there.
+  const { navigating } = useTimesheetNavigation();
 
   // Re-sync when the server sends a different week.
   const [prevInitial, setPrevInitial] = useState(initialHours);
@@ -156,7 +160,7 @@ export function TimesheetGrid({
                       inputMode="decimal"
                       aria-label={`${project.name}, ${d.label} ${d.dayOfMonth}`}
                       aria-busy={saving === key}
-                      disabled={readOnly}
+                      disabled={readOnly || navigating}
                       value={valueOf(key)}
                       placeholder="–"
                       onChange={(e) =>

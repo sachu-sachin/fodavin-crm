@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
 import { copyPreviousWeek } from "@/lib/actions/timesheet";
+import { useTimesheetNavigation } from "@/components/timesheet-navigation";
 import { Button } from "@/components/ui/button";
 
 export function TimesheetToolbar({
@@ -29,12 +30,11 @@ export function TimesheetToolbar({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  // Changing week is a navigation, and until the new week renders this
-  // toolbar still holds the old week's props. Tracking it as a transition
-  // lets everything here stay disabled meanwhile — otherwise a quick "Next
-  // week" then "Copy last week" would copy into the week being left, and a
-  // second "Next week" would skip one.
-  const [navigating, startNavigation] = useTransition();
+  // While a week change is in flight this toolbar still holds the old week's
+  // props, so everything here stays disabled — otherwise a quick "Next week"
+  // then "Copy last week" would copy into the week being left, and a second
+  // "Next week" would skip one. The grid locks on the same signal.
+  const { navigating, navigate } = useTimesheetNavigation();
   const busy = pending || navigating;
 
   const isCurrentWeek = weekStart === currentWeekStart;
@@ -42,7 +42,7 @@ export function TimesheetToolbar({
   function go(week: string, person = profileId) {
     const params = new URLSearchParams({ week });
     if (canSwitchPerson) params.set("person", person);
-    startNavigation(() => router.push(`/timesheet?${params}`));
+    navigate(`/timesheet?${params}`);
   }
 
   function onCopy() {

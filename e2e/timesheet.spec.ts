@@ -15,10 +15,18 @@ async function changeWeek(page: Page, arrow: "Previous week" | "Next week") {
   await expect(page.getByRole("button", { name: arrow })).toBeEnabled();
 }
 
-/** The server-action POST a timesheet cell makes when it saves. */
+/**
+ * The server-action POST a timesheet cell makes when it saves: a POST to the
+ * page that carries Next.js's `next-action` header (router refreshes are GETs,
+ * so they can't be mistaken for it).
+ */
 const saveResponse = (page: Page) =>
   page.waitForResponse(
-    (r) => r.request().method() === "POST" && r.url().includes("/timesheet") && r.ok(),
+    (r) =>
+      r.request().method() === "POST" &&
+      r.url().includes("/timesheet") &&
+      r.request().headers()["next-action"] !== undefined &&
+      r.ok(),
   );
 
 test.describe("Timesheet", () => {

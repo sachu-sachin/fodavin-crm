@@ -140,7 +140,7 @@ Real issues this test suite caught, in the order they came up:
 
    Changing week is a client-side navigation (`router.push`). Until the new week renders, the toolbar is still mounted with the old week's props, and its buttons stayed clickable. So a quick second click acted on the week being left. A person clicking quickly would see the same thing: a copy into one week, then the page jumping to another. The test then reloaded the URL, which by then pointed at the far week, and found it empty.
 
-   **Fix (app):** `TimesheetToolbar` now runs week changes in `useTransition`. While one is pending, every toolbar control is disabled (both arrows, "This week", the person picker and "Copy last week"), and the week label dims. Timesheet cells also expose `aria-busy` while saving.
+   **Fix (app):** week and person changes run in one `useTransition` shared by the whole page (`TimesheetNavigation` in `src/components/timesheet-navigation.tsx`). While one is pending, every toolbar control is disabled (both arrows, "This week", the person picker and "Copy last week"), the week label dims, and **the grid's cells are disabled too**: they still belong to the week being left, so typing there would save into it. Timesheet cells also expose `aria-busy` while saving.
 
    **Fix (test):** the spec waits for real events instead of fixed sleeps:
    - the save's POST response;
