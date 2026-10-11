@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { toast } from "sonner";
 import { moveTaskStatus } from "@/lib/actions/projects";
-import { TASK_STATUSES, type Task } from "@/lib/types";
+import { TASK_STATUSES, type Task, type TaskStatus } from "@/lib/types";
 import { formatDateKey } from "@/lib/format";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -45,10 +46,33 @@ export function ActionItemsSection({
   const nameOf = (id: string | null) =>
     id ? assignees.find((a) => a.id === id)?.name : null;
 
+  // The column each item was in before it was ticked here, so unticking puts
+  // it back in "In progress" or "Review" rather than always "To do".
+  const statusBeforeDone = useRef(new Map<string, TaskStatus>());
+
   function toggle(task: Task) {
-    const status = task.status === "done" ? "todo" : "done";
-    setList((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
-    startTransition(() => moveTaskStatus(task.id, status));
+    const previous = task.status;
+    let status: TaskStatus;
+    if (previous === "done") {
+      status = statusBeforeDone.current.get(task.id) ?? "todo";
+      statusBeforeDone.current.delete(task.id);
+    } else {
+      statusBeforeDone.current.set(task.id, previous);
+      status = "done";
+    }
+    const setStatus = (s: TaskStatus) =>
+      setList((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: s } : t)));
+
+    setStatus(status);
+    startTransition(async () => {
+      try {
+        await moveTaskStatus(task.id, status);
+      } catch {
+        // e.g. the task was deleted in another tab: show what's really saved.
+        setStatus(previous);
+        toast.error("Couldn't update that item. Reload and try again.");
+      }
+    });
   }
 
   const open = list.filter((t) => t.status !== "done").length;

@@ -18,7 +18,7 @@ vi.mock("@/lib/prisma", () => ({
     meeting: {
       create: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn(),
+      deleteMany: vi.fn(),
       findUnique: vi.fn(),
     },
     profile: { findMany: vi.fn() },
@@ -190,12 +190,14 @@ describe("updateMeeting", () => {
     expect(prisma.meeting.update).not.toHaveBeenCalled();
   });
 
-  it("replaces the attendee list and refreshes both the old and new client/project pages", async () => {
+  it("replaces the active attendees, keeps former employees, and refreshes both the old and new client/project pages", async () => {
     authorized();
     activeProfiles("p2");
     vi.mocked(prisma.meeting.findUnique).mockResolvedValue({
       company_id: "old-c",
       project_id: null,
+      // p-left attended, then left the company.
+      attendees: [{ profile_id: "p-left" }],
     } as never);
 
     const result = await updateMeeting(
@@ -206,8 +208,10 @@ describe("updateMeeting", () => {
     expect(result).toEqual({ success: "Meeting updated." });
     const call = vi.mocked(prisma.meeting.update).mock.calls[0][0];
     expect(call.where).toEqual({ id: "m1" });
+    // Only active people can be ticked in the form, so only they are
+    // replaced; someone who attended and has since left stays recorded.
     expect(call.data.attendees).toEqual({
-      deleteMany: {},
+      deleteMany: { profile_id: { notIn: ["p-left"] } },
       create: [{ profile_id: "p2" }],
     });
     expect(call.data).not.toHaveProperty("notes");
@@ -253,23 +257,28 @@ describe("deleteMeeting", () => {
   it("does nothing without meetings.manage", async () => {
     unauthorized();
     await deleteMeeting(form({ id: "m1" }));
-    expect(prisma.meeting.delete).not.toHaveBeenCalled();
+    expect(prisma.meeting.deleteMany).not.toHaveBeenCalled();
   });
 
   it("deletes, refreshes the linked pages and the task board, then redirects", async () => {
     authorized();
-    vi.mocked(prisma.meeting.delete).mockResolvedValue({
+    vi.mocked(prisma.meeting.findUnique).mockResolvedValue({
       company_id: "c1",
       project_id: "pr1",
     } as never);
 
     await expect(deleteMeeting(form({ id: "m1" }))).rejects.toThrow("REDIRECT:/meetings");
-    expect(prisma.meeting.delete).toHaveBeenCalledWith({
-      where: { id: "m1" },
-      select: { company_id: true, project_id: true },
-    });
+    expect(prisma.meeting.deleteMany).toHaveBeenCalledWith({ where: { id: "m1" } });
     expect(revalidatePath).toHaveBeenCalledWith("/crm/c1");
     expect(revalidatePath).toHaveBeenCalledWith("/projects/pr1");
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
+  });
+
+  it("just redirects when the meeting is already gone (double click, or deleted elsewhere)", async () => {
+    authorized();
+    vi.mocked(prisma.meeting.findUnique).mockResolvedValue(null);
+
+    await expect(deleteMeeting(form({ id: "m1" }))).rejects.toThrow("REDIRECT:/meetings");
+    expect(prisma.meeting.deleteMany).not.toHaveBeenCalled();
   });
 });
