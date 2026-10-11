@@ -19,7 +19,7 @@ vi.mock("@/lib/prisma", () => ({
     announcement: {
       create: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn(),
+      deleteMany: vi.fn(),
       findUnique: vi.fn(),
     },
     announcementRead: { upsert: vi.fn() },
@@ -168,6 +168,14 @@ describe("createAnnouncement", () => {
     });
     expect(vi.mocked(prisma.announcement.create).mock.calls[0][0].data.audience_role_ids).toEqual(["r1"]);
   });
+
+  it("refuses when every ticked role is gone, instead of posting it to everyone", async () => {
+    authorized();
+    vi.mocked(prisma.role.findMany).mockResolvedValue([] as never);
+    const result = await createAnnouncement({}, form({ ...VALID, audience_role_ids: ["gone"] }));
+    expect(result.error).toMatch(/no longer exist/i);
+    expect(prisma.announcement.create).not.toHaveBeenCalled();
+  });
 });
 
 describe("updateAnnouncement", () => {
@@ -177,8 +185,17 @@ describe("updateAnnouncement", () => {
     expect(prisma.announcement.update).not.toHaveBeenCalled();
   });
 
+  function existing(fields: { requires_ack?: boolean; audience_role_ids?: string[] } = {}) {
+    vi.mocked(prisma.announcement.findUnique).mockResolvedValue({
+      requires_ack: false,
+      audience_role_ids: [],
+      ...fields,
+    } as never);
+  }
+
   it("updates without touching who has read it", async () => {
     authorized();
+    existing();
     const result = await updateAnnouncement({}, form({ ...VALID, id: "a1" }));
     expect(result).toEqual({ success: "Announcement updated." });
     const call = vi.mocked(prisma.announcement.update).mock.calls[0][0];
@@ -188,11 +205,52 @@ describe("updateAnnouncement", () => {
 
   it("clears every read when asked to, so everyone reads it again", async () => {
     authorized();
+    existing();
     const result = await updateAnnouncement({}, form({ ...VALID, id: "a1", reset_reads: "on" }));
     expect(result.success).toMatch(/read it again/);
     expect(vi.mocked(prisma.announcement.update).mock.calls[0][0].data).toMatchObject({
       reads: { deleteMany: {} },
     });
+  });
+
+  it("clears reads when acknowledgement is newly required: a plain read isn't an ack", async () => {
+    authorized();
+    existing({ requires_ack: false });
+    const result = await updateAnnouncement({}, form({ ...VALID, id: "a1", requires_ack: "on" }));
+    expect(result.success).toMatch(/read it again/);
+    expect(vi.mocked(prisma.announcement.update).mock.calls[0][0].data).toMatchObject({
+      reads: { deleteMany: {} },
+      requires_ack: true,
+    });
+  });
+
+  it("keeps an already-required acknowledgement's reads", async () => {
+    authorized();
+    existing({ requires_ack: true });
+    await updateAnnouncement({}, form({ ...VALID, id: "a1", requires_ack: "on" }));
+    expect(vi.mocked(prisma.announcement.update).mock.calls[0][0].data).not.toHaveProperty("reads");
+  });
+
+  it("keeps a deleted role it was already limited to, so an edit never widens the audience", async () => {
+    authorized();
+    existing({ audience_role_ids: ["deleted-role"] });
+    vi.mocked(prisma.role.findMany).mockResolvedValue([] as never);
+    const result = await updateAnnouncement(
+      {},
+      form({ ...VALID, id: "a1", audience_role_ids: ["deleted-role"] }),
+    );
+    expect(result.error).toBeUndefined();
+    expect(vi.mocked(prisma.announcement.update).mock.calls[0][0].data.audience_role_ids).toEqual([
+      "deleted-role",
+    ]);
+  });
+
+  it("errors for an announcement that no longer exists", async () => {
+    authorized();
+    vi.mocked(prisma.announcement.findUnique).mockResolvedValue(null);
+    const result = await updateAnnouncement({}, form({ ...VALID, id: "gone" }));
+    expect(result.error).toMatch(/no longer exists/i);
+    expect(prisma.announcement.update).not.toHaveBeenCalled();
   });
 });
 
@@ -200,13 +258,13 @@ describe("deleteAnnouncement", () => {
   it("does nothing without announcements.manage", async () => {
     unauthorized();
     await deleteAnnouncement(form({ id: "a1" }));
-    expect(prisma.announcement.delete).not.toHaveBeenCalled();
+    expect(prisma.announcement.deleteMany).not.toHaveBeenCalled();
   });
 
-  it("deletes and refreshes", async () => {
+  it("deletes and refreshes (a no-op if it's already gone)", async () => {
     authorized();
     await deleteAnnouncement(form({ id: "a1" }));
-    expect(prisma.announcement.delete).toHaveBeenCalledWith({ where: { id: "a1" } });
+    expect(prisma.announcement.deleteMany).toHaveBeenCalledWith({ where: { id: "a1" } });
     expect(revalidatePath).toHaveBeenCalledWith("/announcements");
   });
 });
@@ -227,7 +285,7 @@ describe("markAnnouncementRead", () => {
   it("records the read for a live announcement addressed to everyone", async () => {
     signedIn("r1", "user-7");
     vi.mocked(prisma.announcement.findUnique).mockResolvedValue(live as never);
-    await markAnnouncementRead("a1");
+    expect((await markAnnouncementRead("a1")).success).toBeDefined();
     expect(prisma.announcementRead.upsert).toHaveBeenCalledWith({
       where: { announcement_id_profile_id: { announcement_id: "a1", profile_id: "user-7" } },
       create: { announcement_id: "a1", profile_id: "user-7" },
@@ -236,7 +294,7 @@ describe("markAnnouncementRead", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/");
   });
 
-  it("ignores one that doesn't exist, isn't live yet, has expired, or isn't for the caller's role", async () => {
+  it("refuses one that doesn't exist, isn't live yet, has expired, or isn't for the caller's role, all with the same message", async () => {
     signedIn("r1");
     const cases = [
       null,
@@ -244,10 +302,14 @@ describe("markAnnouncementRead", () => {
       { ...live, expires_at: new Date("2026-03-09T00:00:00Z") },
       { ...live, audience_role_ids: ["r2"] },
     ];
+    const errors = new Set<string | undefined>();
     for (const found of cases) {
       vi.mocked(prisma.announcement.findUnique).mockResolvedValueOnce(found as never);
-      await markAnnouncementRead("a1");
+      errors.add((await markAnnouncementRead("a1")).error);
     }
     expect(prisma.announcementRead.upsert).not.toHaveBeenCalled();
+    // One identical refusal, so it can't be used to tell hidden ones apart.
+    expect(errors.size).toBe(1);
+    expect([...errors][0]).toMatch(/no longer available/i);
   });
 });

@@ -72,10 +72,18 @@ begin
 end;
 $$;
 
+-- Every public table with an updated_at column, so new tables are covered as
+-- soon as this file is re-run (a hand-maintained list had already missed
+-- google_accounts).
 do $$
 declare t text;
 begin
-  foreach t in array array['companies', 'contacts', 'inquiries', 'projects', 'tasks', 'social_posts', 'payment_milestones', 'documents', 'time_entries', 'meetings', 'announcements', 'onboarding_templates', 'onboardings']
+  for t in
+    select c.table_name
+    from information_schema.columns c
+    join information_schema.tables tb using (table_schema, table_name)
+    where c.table_schema = 'public' and c.column_name = 'updated_at'
+      and tb.table_type = 'BASE TABLE'
   loop
     execute format('drop trigger if exists %I_updated_at on public.%I', t, t);
     execute format(

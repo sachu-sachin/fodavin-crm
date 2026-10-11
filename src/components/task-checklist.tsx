@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { toast } from "sonner";
 import { moveTaskStatus } from "@/lib/actions/projects";
-import { TASK_STATUSES, type Task } from "@/lib/types";
+import { TASK_STATUSES, type Task, type TaskStatus } from "@/lib/types";
 import { formatDateKey } from "@/lib/format";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,8 @@ export function TaskChecklist({
   assignees,
   today,
   canManage,
+  canAdd = canManage,
+  ownStepsOf,
 }: {
   /** What new items are added to. */
   parent: { meetingId: string } | { onboardingId: string };
@@ -40,8 +43,12 @@ export function TaskChecklist({
   assignees: { id: string; name: string }[];
   /** "YYYY-MM-DD" in IST, for overdue highlighting. */
   today: string;
-  /** tasks.manage — add, edit and tick off. */
+  /** tasks.manage — edit and tick off any item. */
   canManage: boolean;
+  /** May add items (defaults to canManage). */
+  canAdd?: boolean;
+  /** This user may tick off the items assigned to them, even without canManage. */
+  ownStepsOf?: string;
 }) {
   const [list, setList] = useState(items);
   const [, startTransition] = useTransition();
@@ -55,10 +62,33 @@ export function TaskChecklist({
   const nameOf = (id: string | null) =>
     id ? assignees.find((a) => a.id === id)?.name : null;
 
+  // The column each item was in before it was ticked here, so unticking puts
+  // it back in "In progress" or "Review" rather than always "To do".
+  const statusBeforeDone = useRef(new Map<string, TaskStatus>());
+
   function toggle(task: Task) {
-    const status = task.status === "done" ? "todo" : "done";
-    setList((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
-    startTransition(() => moveTaskStatus(task.id, status));
+    const previous = task.status;
+    let status: TaskStatus;
+    if (previous === "done") {
+      status = statusBeforeDone.current.get(task.id) ?? "todo";
+      statusBeforeDone.current.delete(task.id);
+    } else {
+      statusBeforeDone.current.set(task.id, previous);
+      status = "done";
+    }
+    const setStatus = (s: TaskStatus) =>
+      setList((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: s } : t)));
+
+    setStatus(status);
+    startTransition(async () => {
+      try {
+        await moveTaskStatus(task.id, status);
+      } catch {
+        // e.g. the task was deleted in another tab: show what's really saved.
+        setStatus(previous);
+        toast.error("Couldn't update that item. Reload and try again.");
+      }
+    });
   }
 
   const open = list.filter((t) => t.status !== "done").length;
@@ -74,7 +104,7 @@ export function TaskChecklist({
             </span>
           )}
         </CardTitle>
-        {canManage && (
+        {canAdd && (
           <TaskFormDialog
             {...("meetingId" in parent
               ? { fixedMeetingId: parent.meetingId }
@@ -92,7 +122,7 @@ export function TaskChecklist({
         {list.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
             Nothing yet.
-            {canManage && ` ${emptyHint}`}
+            {canAdd && ` ${emptyHint}`}
           </p>
         ) : (
           <ul className="divide-y">
@@ -119,9 +149,11 @@ export function TaskChecklist({
                   </span>
                 </span>
               );
+              const canTick =
+                canManage || (ownStepsOf != null && task.assignee_id === ownStepsOf);
               return (
                 <li key={task.id} className="flex items-center gap-3 py-2">
-                  {canManage && (
+                  {canTick && (
                     <input
                       type="checkbox"
                       checked={done}

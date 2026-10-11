@@ -5,8 +5,9 @@ The Supabase free plan has no backups you can restore from, so
 every night at **02:00 IST**:
 
 1. `pg_dump` of the `public` schema (all app data) and the `auth` schema
-   (employee accounts and password hashes), minus login sessions, refresh
-   tokens and the auth audit log.
+   (employee accounts and password hashes), minus login sessions and the
+   tokens tied to them, the auth audit log, and `auth.schema_migrations`
+   (a new project has its own).
 2. Checks the archive is readable and contains the core tables. The run
    fails if it isn't, so a broken backup shows up as a red ✗ in the
    **Actions** tab rather than going unnoticed.
@@ -58,30 +59,44 @@ You need PostgreSQL client tools at the same major version as the server
    ```bash
    gpg --decrypt --output backup.dump fodavin-db-<date>.dump.gpg
    ```
-3. Create a **new** Supabase project and take its session pooler URL as
-   `TARGET`. Restore into an empty project, never on top of the live one.
-4. Restore accounts first, then app data:
+3. Create a **new** Supabase project and put its values in `.env.restore`
+   (`DATABASE_URL` and `DIRECT_URL` both set to its session pooler URL).
+   Take that URL as `TARGET` too. Restore into an empty project, never on top
+   of the live one. Turn **Authentication → Sign In / Providers → "Allow new
+   users to sign up"** off in it straight away.
+4. Create the tables with Prisma, using the same code version as the backup:
    ```bash
-   pg_restore --dbname "$TARGET" --no-owner --no-privileges --data-only --schema=auth backup.dump
-   pg_restore --dbname "$TARGET" --no-owner --no-privileges --schema=public backup.dump
+   npx dotenv -e .env.restore -- npx prisma db push --skip-generate
    ```
-   An error saying schema `public` already exists is harmless.
-5. **Immediately** re-apply the Supabase wiring against the new project
+5. Load accounts and app data in one transaction. `session_replication_role
+   = replica` pauses triggers and foreign-key checks while loading, so the
+   signup trigger doesn't create duplicate profiles and table order doesn't
+   matter:
+   ```bash
+   { echo "SET session_replication_role = replica;"
+     pg_restore --data-only --no-owner --no-privileges \
+       --table=users --table=identities --schema=auth -f - backup.dump
+     pg_restore --data-only --no-owner --no-privileges --schema=public -f - backup.dump
+   } | psql "$TARGET" -v ON_ERROR_STOP=1 --single-transaction -q
+   ```
+   This is how the Tokyo → Mumbai move was done on 2026-10-11. Compare
+   `select count(*)` per table between the backup's source and the target.
+6. **Immediately** re-apply the Supabase wiring against the new project
    (signup triggers, `updated_at`, and the Data API lock — until this runs,
-   the restored tables are readable with the new project's anon key):
+   the restored tables may be reachable with the new project's anon key):
    ```bash
    npx dotenv -e .env.restore -- npx prisma db execute --schema prisma/schema.prisma --file supabase/setup.sql
    ```
-   where `.env.restore` holds the new project's `DIRECT_URL`.
-6. Point the app's environment variables at the new project, recreate the
-   private `documents` bucket's contents if you have copies of those files,
-   and sign in to check.
+7. Point the app's environment variables at the new project, rebuild (the
+   public Supabase keys are baked into the build), recreate the private
+   `documents` bucket's contents if you have copies of those files, and sign
+   in to check. Everyone has to sign in again; passwords carry over.
 
 ### Restore drill
 
 Do this once after setup and then every few months — a backup that has never
 been restored is a hope, not a backup. Use a throwaway Supabase project, run
-steps 1–5, sign in, spot-check a few clients and projects, then delete the
+steps 1–6, sign in, spot-check a few clients and projects, then delete the
 throwaway project (it holds real client data).
 
 ## Costs and limits

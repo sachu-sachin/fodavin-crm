@@ -32,9 +32,11 @@ export default async function OnboardingDetailPage({
   });
   if (!onboarding) notFound();
 
-  // Anyone with onboarding.view, plus the person being onboarded.
+  // Anyone with onboarding.view, the person being onboarded, and anyone with
+  // a step on this checklist (their dashboard task links here).
   const isOwn = onboarding.profile_id === session.userId;
-  if (!isOwn && !can(session, "onboarding.view")) redirect("/");
+  const hasAStep = onboarding.tasks.some((t) => t.assignee_id === session.userId);
+  if (!isOwn && !hasAStep && !can(session, "onboarding.view")) redirect("/");
 
   const profiles = await prisma.profile.findMany({
     where: { is_active: true },
@@ -93,6 +95,9 @@ export default async function OnboardingDetailPage({
           assignees={assignees}
           today={istToday()}
           canManage={can(session, "tasks.manage")}
+          canAdd={can(session, "tasks.manage") && can(session, "onboarding.manage")}
+          // A new joiner can tick off their own steps whatever their role.
+          ownStepsOf={session.userId}
         />
       </div>
     </div>

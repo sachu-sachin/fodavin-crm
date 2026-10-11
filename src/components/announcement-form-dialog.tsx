@@ -42,6 +42,10 @@ export function AnnouncementFormDialog({
   const { formRef, markClean } = useGuardedForm(open);
 
   const audience = new Set(announcement?.audience_role_ids ?? []);
+  // Roles it's limited to that have since been deleted. Shown ticked so the
+  // restriction is visible and only removed on purpose; dropping them
+  // silently would turn a limited announcement into one for everyone.
+  const deletedRoleIds = [...audience].filter((id) => !roles.some((r) => r.id === id));
 
   function onAction(formData: FormData) {
     startTransition(async () => {
@@ -144,7 +148,7 @@ export function AnnouncementFormDialog({
             </div>
           </div>
 
-          {roles.length > 0 && (
+          {(roles.length > 0 || deletedRoleIds.length > 0) && (
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium">Audience</legend>
               <p className="text-xs text-muted-foreground">
@@ -161,6 +165,18 @@ export function AnnouncementFormDialog({
                       className="h-4 w-4 rounded border-input"
                     />
                     <span className="truncate">{r.name}</span>
+                  </label>
+                ))}
+                {deletedRoleIds.map((id) => (
+                  <label key={id} className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      name="audience_role_ids"
+                      value={id}
+                      defaultChecked
+                      className="h-4 w-4 rounded border-input"
+                    />
+                    <span className="truncate">A deleted role</span>
                   </label>
                 ))}
               </div>
