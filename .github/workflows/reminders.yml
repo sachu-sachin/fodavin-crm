@@ -1,0 +1,49 @@
+name: Daily reminders
+
+# Asks the app to send today's reminder digests (POST /api/cron/reminders).
+# Works the same whether the app runs on Vercel or a VPS. Setup:
+# docs/email-reminders.md. Scheduled runs only fire from the default branch.
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # 08:30 IST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only: list who would get what, send nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-reminders
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      REMINDERS_APP_URL: ${{ secrets.REMINDERS_APP_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
+    steps:
+      - name: Send digests
+        run: |
+          set -euo pipefail
+          if [ -z "$REMINDERS_APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            # Optional feature: stay green until it's set up.
+            echo "::notice::Reminders not set up yet (REMINDERS_APP_URL / CRON_SECRET secrets). See docs/email-reminders.md."
+            exit 0
+          fi
+          url="${REMINDERS_APP_URL%/}/api/cron/reminders"
+          [ "$DRY" = "1" ] && url="$url?dry=1"
+          # --fail-with-body: a non-2xx answer (e.g. a failed send → 502)
+          # fails the run but still prints which sends failed and why.
+          # The dry-run preview (names and task titles) is left out of the
+          # log, which everyone with repo access can read; counts stay.
+          curl -sS --fail-with-body --max-time 120 -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$url" | jq 'del(.preview)'

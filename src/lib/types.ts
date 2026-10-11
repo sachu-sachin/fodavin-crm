@@ -119,6 +119,8 @@ export interface Profile {
   avatar_url: string | null;
   role_id: string | null;
   is_active: boolean;
+  /** Receives the daily reminder email. */
+  email_digest: boolean;
   created_at: string;
 }
 

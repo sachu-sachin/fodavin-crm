@@ -68,6 +68,25 @@ describe("updateSession", () => {
     expect(response.headers.get("location")).toContain("/login");
   });
 
+  it("lets a scheduler reach /api/cron/* without a session (the route checks its own secret), still without a forged header", async () => {
+    mockUser(null);
+    const request = requestWithForgedHeader("/api/cron/reminders", "victim-user-id");
+
+    const response = await updateSession(request);
+
+    expect(response.status).not.toBe(307);
+    expect(response.headers.get("location")).toBeNull();
+    expect(forwardedHeader(response, VERIFIED_USER_HEADER)).not.toBe("victim-user-id");
+  });
+
+  it("still redirects other API routes without a session", async () => {
+    mockUser(null);
+    const response = await updateSession(
+      new NextRequest("http://localhost:3000/api/reports/clients"),
+    );
+    expect(response.status).toBe(307);
+  });
+
   it("overwrites a forged header with the real verified id when authenticated", async () => {
     mockUser("real-user-id");
     const request = requestWithForgedHeader("/crm", "victim-user-id");

@@ -1,6 +1,9 @@
 "use client";
 
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
 import { signOut } from "@/lib/actions/auth";
+import { setEmailDigest } from "@/lib/actions/account";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -16,9 +19,29 @@ interface UserMenuProps {
   name: string;
   email: string;
   avatarUrl?: string | null;
+  /** Whether they get the daily reminder email. */
+  emailDigest: boolean;
 }
 
-export function UserMenu({ name, email, avatarUrl }: UserMenuProps) {
+export function UserMenu({ name, email, avatarUrl, emailDigest }: UserMenuProps) {
+  const [digestOn, setDigestOn] = useState(emailDigest);
+  const [, startTransition] = useTransition();
+
+  function toggleDigest() {
+    const next = !digestOn;
+    setDigestOn(next);
+    startTransition(async () => {
+      try {
+        await setEmailDigest(next);
+        toast.success(next ? "Daily reminder email on" : "Daily reminder email off");
+      } catch {
+        // Show what's really saved, so nobody thinks they've turned it off.
+        setDigestOn(!next);
+        toast.error("Couldn't save that. Reload and try again.");
+      }
+    });
+  }
+
   const initials = name
     .split(" ")
     .map((n) => n[0])
@@ -47,6 +70,18 @@ export function UserMenu({ name, email, avatarUrl }: UserMenuProps) {
             </span>
           </DropdownMenuLabel>
         </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="cursor-pointer"
+          closeOnClick={false}
+          onClick={toggleDigest}
+          aria-label={`Daily reminder email: ${digestOn ? "on" : "off"}`}
+        >
+          <span className="flex w-full items-center justify-between gap-2">
+            Daily reminder email
+            <span className="text-xs text-muted-foreground">{digestOn ? "On" : "Off"}</span>
+          </span>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <form action={signOut}>
           <button type="submit" className="w-full">
