@@ -122,18 +122,28 @@ export async function updateMeeting(
   // moved elsewhere.
   const before = await prisma.meeting.findUnique({
     where: { id },
-    select: { company_id: true, project_id: true },
+    select: {
+      company_id: true,
+      project_id: true,
+      attendees: {
+        where: { profile: { is_active: false } },
+        select: { profile_id: true },
+      },
+    },
   });
   if (!before) return { error: "That meeting no longer exists." };
 
-  // Attendees are replaced wholesale, in the same statement as the update.
+  // The form only offers active people, so the submitted list replaces the
+  // active attendees. Anyone who attended and has since left stays on the
+  // record: they can't be ticked in the form, so they must not be dropped.
+  const formerAttendees = before.attendees.map((a) => a.profile_id);
   await prisma.meeting.update({
     where: { id },
     data: {
       ...data,
       starts_at: data.starts_at,
       attendees: {
-        deleteMany: {},
+        deleteMany: { profile_id: { notIn: formerAttendees } },
         create: attendeeIds.map((profile_id) => ({ profile_id })),
       },
     },
@@ -179,11 +189,16 @@ export async function deleteMeeting(formData: FormData): Promise<void> {
 
   // Action items survive (Task.meeting_id is SetNull): they're real work
   // that still needs doing, whatever happens to the meeting record.
-  const meeting = await prisma.meeting.delete({
+  // Already gone (e.g. a second click, or someone else deleted it): nothing
+  // to do but leave the page.
+  const meeting = await prisma.meeting.findUnique({
     where: { id },
     select: { company_id: true, project_id: true },
   });
-  revalidateMeeting(id, meeting);
-  revalidatePath("/tasks");
+  if (meeting) {
+    await prisma.meeting.deleteMany({ where: { id } });
+    revalidateMeeting(id, meeting);
+    revalidatePath("/tasks");
+  }
   redirect("/meetings");
 }

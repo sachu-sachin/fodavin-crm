@@ -30,6 +30,11 @@ describe("supabase/setup.sql keeps the Data API out of app data", () => {
     expect(setupSql).toMatch(/enable\s+row\s+level\s+security/i);
   });
 
+  it("adds updated_at triggers to every table with that column, not a hand-maintained list", () => {
+    expect(setupSql).toMatch(/information_schema\.columns[\s\S]*column_name\s*=\s*'updated_at'/i);
+    expect(setupSql).not.toMatch(/foreach\s+t\s+in\s+array\s+(?:array\s*)?\[[^\]]*\]\s*loop\s*execute\s+format\(\s*'drop trigger/i);
+  });
+
   it("revokes existing and future table access from anon and authenticated", () => {
     expect(setupSql).toMatch(
       /revoke\s+all\s+on\s+all\s+tables\s+in\s+schema\s+public\s+from\s+anon,\s*authenticated/i,

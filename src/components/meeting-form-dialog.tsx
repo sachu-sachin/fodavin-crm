@@ -7,6 +7,7 @@ import { createMeeting, updateMeeting } from "@/lib/actions/meetings";
 import { useGuardedForm } from "@/hooks/use-unsaved-changes-guard";
 import { MEETING_DURATIONS, MEETING_TYPES, type Meeting } from "@/lib/types";
 import { toISTInputValue } from "@/lib/format";
+import { durationLabel } from "@/lib/meetings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -115,12 +116,16 @@ export function MeetingFormDialog({
                 id="duration_minutes"
                 name="duration_minutes"
                 className={selectClass}
-                defaultValue={String(meeting?.duration_minutes ?? 30)}
+                // 30 min for a new meeting; an existing one keeps "Not set"
+                // rather than quietly becoming 30 when edited.
+                defaultValue={
+                  meeting ? String(meeting.duration_minutes ?? "") : "30"
+                }
               >
                 <option value="">— Not set —</option>
                 {MEETING_DURATIONS.map((m) => (
                   <option key={m} value={m}>
-                    {m < 60 ? `${m} min` : `${m / 60} hr${m === 60 ? "" : "s"}`}
+                    {durationLabel(m)}
                   </option>
                 ))}
               </select>

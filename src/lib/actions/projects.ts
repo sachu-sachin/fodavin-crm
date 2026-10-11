@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { authorize, DENIED_MESSAGE } from "@/lib/auth";
+import { authorize, can, DENIED_MESSAGE } from "@/lib/auth";
 import type { Permission } from "@/lib/permissions";
 import { purgeDocumentFiles } from "@/lib/document-files";
 import type {
@@ -190,22 +190,24 @@ export async function createTask(
   _prev: ProjectState,
   formData: FormData,
 ): Promise<ProjectState> {
-  const userId = await requireUserId("tasks.manage");
-  if (!userId) return { error: DENIED_MESSAGE };
+  const session = await authorize("tasks.manage");
+  if (!session) return { error: DENIED_MESSAGE };
+  const userId = session.userId;
   let projectId = str(formData.get("project_id"));
   const meetingId = str(formData.get("meeting_id"));
   const title = String(formData.get("title") ?? "").trim();
 
-  // A meeting's action item takes the meeting's project, if it has one; an
-  // internal meeting's action items have no project. Every other task must
-  // belong to a project.
+  // A meeting's action item always takes the meeting's project (none for an
+  // internal meeting), whatever the form sent, and adding one needs access to
+  // meetings as well as tasks. Every other task must belong to a project.
   if (meetingId) {
+    if (!can(session, "meetings.view")) return { error: DENIED_MESSAGE };
     const meeting = await prisma.meeting.findUnique({
       where: { id: meetingId },
       select: { project_id: true },
     });
     if (!meeting) return { error: "That meeting no longer exists." };
-    projectId ??= meeting.project_id;
+    projectId = meeting.project_id;
   } else if (!projectId) {
     return { error: "Pick a project." };
   }

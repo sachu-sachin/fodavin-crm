@@ -38,6 +38,12 @@ export function toMeetingListItem(m: MeetingListRow): MeetingListItem {
   };
 }
 
+/** "30 min", "1 hr", "1.5 hrs"; null when no duration is set. */
+export function durationLabel(minutes: number | null): string | null {
+  if (!minutes) return null;
+  return minutes < 60 ? `${minutes} min` : `${minutes / 60} hr${minutes === 60 ? "" : "s"}`;
+}
+
 /**
  * Split into today-and-later (soonest first) and earlier (most recent first).
  * A meeting from earlier today still counts as current, so its notes and
