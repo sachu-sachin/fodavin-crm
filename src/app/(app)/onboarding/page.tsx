@@ -68,7 +68,10 @@ export default async function OnboardingPage() {
       overdue: o.tasks.filter((t) => t.due_date && t.due_date < todayDate).length,
     };
   });
-  const inProgress = rows.filter((r) => r.done < r.total);
+  // One with no steps left (all removed by hand) stays in progress: it isn't
+  // finished, and listing it nowhere would hide it for good, since the
+  // person can't be given a second onboarding.
+  const inProgress = rows.filter((r) => r.total === 0 || r.done < r.total);
   const finished = rows.filter((r) => r.total > 0 && r.done === r.total);
   const usableTemplates = templates
     .filter((t) => t._count.items > 0)

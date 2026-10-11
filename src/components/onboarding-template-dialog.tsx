@@ -27,10 +27,18 @@ interface Row {
   title: string;
   owner: string;
   days: string;
+  /** Not editable here, but carried with the row so renaming keeps it. */
+  description: string | null;
 }
 
 let nextKey = 0;
-const blankRow = (): Row => ({ key: nextKey++, title: "", owner: "", days: "0" });
+const blankRow = (): Row => ({
+  key: nextKey++,
+  title: "",
+  owner: "",
+  days: "0",
+  description: null,
+});
 
 export function OnboardingTemplateDialog({
   template,
@@ -54,6 +62,7 @@ export function OnboardingTemplateDialog({
           title: i.title,
           owner: i.assign_to_new_hire ? "new_hire" : (i.assignee_id ?? ""),
           days: String(i.due_offset_days),
+          description: i.description,
         }))
       : [blankRow(), blankRow(), blankRow()];
   const [rows, setRows] = useState<Row[]>(savedRows);
@@ -71,14 +80,10 @@ export function OnboardingTemplateDialog({
   const update = (key: number, patch: Partial<Row>) =>
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
-  // Descriptions aren't edited here; keep any an existing step already has.
-  const descriptionByTitle = new Map(
-    (template?.items ?? []).map((i) => [i.title, i.description]),
-  );
   const itemsJson = JSON.stringify(
     rows.map((r) => ({
       title: r.title,
-      description: descriptionByTitle.get(r.title.trim()) ?? null,
+      description: r.description,
       assign_to_new_hire: r.owner === "new_hire",
       assignee_id: r.owner && r.owner !== "new_hire" ? r.owner : null,
       due_offset_days: Number(r.days),

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { authorize, DENIED_MESSAGE } from "@/lib/auth";
 import {
@@ -62,7 +63,8 @@ export async function deleteTemplate(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   // Onboardings made from it keep their checklists (template_id SetNull).
-  await prisma.onboardingTemplate.delete({ where: { id } });
+  // deleteMany: deleting one that's already gone is a no-op.
+  await prisma.onboardingTemplate.deleteMany({ where: { id } });
   revalidatePath("/onboarding/templates");
   revalidatePath("/onboarding");
 }
@@ -70,6 +72,14 @@ export async function deleteTemplate(formData: FormData): Promise<void> {
 export async function addStarterTemplate(): Promise<OnboardingState> {
   const session = await authorize("onboarding.manage");
   if (!session) return { error: DENIED_MESSAGE };
+  // The button shows on two pages and can be clicked twice; one copy is enough.
+  const existing = await prisma.onboardingTemplate.findFirst({
+    where: { name: STARTER_TEMPLATE.name },
+    select: { id: true },
+  });
+  if (existing) {
+    return { error: `"${STARTER_TEMPLATE.name}" is already in your templates.` };
+  }
   await prisma.onboardingTemplate.create({
     data: {
       name: STARTER_TEMPLATE.name,
@@ -118,23 +128,33 @@ export async function startOnboarding(
   if (!template) return { error: "That template no longer exists." };
   if (template.items.length === 0) return { error: "That template has no steps." };
 
-  const onboarding = await prisma.onboarding.create({
-    data: {
-      profile_id: profileId,
-      template_id: templateId,
-      start_date: new Date(startDate),
-      created_by: session.userId,
-      tasks: {
-        create: checklistTasks(template.items, {
-          newHireId: profileId,
-          startDate,
-          activeProfileIds: new Set(active.map((p) => p.id)),
-          createdBy: session.userId,
-        }),
+  let onboarding: { id: string };
+  try {
+    onboarding = await prisma.onboarding.create({
+      data: {
+        profile_id: profileId,
+        template_id: templateId,
+        start_date: new Date(startDate),
+        created_by: session.userId,
+        tasks: {
+          create: checklistTasks(template.items, {
+            newHireId: profileId,
+            startDate,
+            activeProfileIds: new Set(active.map((p) => p.id)),
+            createdBy: session.userId,
+          }),
+        },
       },
-    },
-    select: { id: true },
-  });
+      select: { id: true },
+    });
+  } catch (e) {
+    // A double submit (or two managers at once) can pass the check above;
+    // the unique profile_id then rejects the second one.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return { error: "They already have an onboarding checklist." };
+    }
+    throw e;
+  }
 
   revalidatePath("/onboarding");
   revalidatePath("/tasks");
@@ -151,7 +171,8 @@ export async function deleteOnboarding(formData: FormData): Promise<void> {
   if (!(await authorize("onboarding.manage"))) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await prisma.onboarding.delete({ where: { id } });
+  // deleteMany: a second click (already gone) just redirects.
+  await prisma.onboarding.deleteMany({ where: { id } });
   revalidatePath("/onboarding");
   revalidatePath("/tasks");
   revalidatePath("/");

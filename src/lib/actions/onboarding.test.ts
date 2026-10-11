@@ -18,10 +18,11 @@ vi.mock("@/lib/prisma", () => ({
     onboardingTemplate: {
       create: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn(),
+      deleteMany: vi.fn(),
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
     },
-    onboarding: { create: vi.fn(), delete: vi.fn(), findUnique: vi.fn() },
+    onboarding: { create: vi.fn(), deleteMany: vi.fn(), findUnique: vi.fn() },
     profile: { findUnique: vi.fn(), findMany: vi.fn() },
   },
 }));
@@ -114,10 +115,10 @@ describe("deleteTemplate / addStarterTemplate", () => {
   it("deleteTemplate needs onboarding.manage", async () => {
     unauthorized();
     await deleteTemplate(form({ id: "t1" }));
-    expect(prisma.onboardingTemplate.delete).not.toHaveBeenCalled();
+    expect(prisma.onboardingTemplate.deleteMany).not.toHaveBeenCalled();
     authorized();
     await deleteTemplate(form({ id: "t1" }));
-    expect(prisma.onboardingTemplate.delete).toHaveBeenCalledWith({ where: { id: "t1" } });
+    expect(prisma.onboardingTemplate.deleteMany).toHaveBeenCalledWith({ where: { id: "t1" } });
   });
 
   it("addStarterTemplate creates the built-in checklist", async () => {
@@ -128,6 +129,13 @@ describe("deleteTemplate / addStarterTemplate", () => {
     const data = vi.mocked(prisma.onboardingTemplate.create).mock.calls[0][0].data;
     expect(data.name).toBe(STARTER_TEMPLATE.name);
     expect((data.items as { create: unknown[] }).create).toHaveLength(STARTER_TEMPLATE.items.length);
+  });
+
+  it("addStarterTemplate won't add a second copy", async () => {
+    authorized();
+    vi.mocked(prisma.onboardingTemplate.findFirst).mockResolvedValue({ id: "t0" } as never);
+    expect((await addStarterTemplate()).error).toMatch(/already in your templates/);
+    expect(prisma.onboardingTemplate.create).not.toHaveBeenCalled();
   });
 });
 
@@ -201,19 +209,32 @@ describe("startOnboarding", () => {
     ]);
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
+
+  it("turns a concurrent duplicate (unique profile_id) into the normal message", async () => {
+    authorized();
+    happyPath();
+    const { Prisma } = await import("@prisma/client");
+    vi.mocked(prisma.onboarding.create).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      }),
+    );
+    expect((await startOnboarding({}, form(VALID))).error).toMatch(/already have/);
+  });
 });
 
 describe("deleteOnboarding", () => {
   it("does nothing without onboarding.manage", async () => {
     unauthorized();
     await deleteOnboarding(form({ id: "o1" }));
-    expect(prisma.onboarding.delete).not.toHaveBeenCalled();
+    expect(prisma.onboarding.deleteMany).not.toHaveBeenCalled();
   });
 
   it("deletes (its tasks cascade) and redirects", async () => {
     authorized();
     await expect(deleteOnboarding(form({ id: "o1" }))).rejects.toThrow("REDIRECT:/onboarding");
-    expect(prisma.onboarding.delete).toHaveBeenCalledWith({ where: { id: "o1" } });
+    expect(prisma.onboarding.deleteMany).toHaveBeenCalledWith({ where: { id: "o1" } });
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
 });

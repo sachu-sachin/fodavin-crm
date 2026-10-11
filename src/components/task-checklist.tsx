@@ -29,6 +29,8 @@ export function TaskChecklist({
   assignees,
   today,
   canManage,
+  canAdd = canManage,
+  ownStepsOf,
 }: {
   /** What new items are added to. */
   parent: { meetingId: string } | { onboardingId: string };
@@ -41,8 +43,12 @@ export function TaskChecklist({
   assignees: { id: string; name: string }[];
   /** "YYYY-MM-DD" in IST, for overdue highlighting. */
   today: string;
-  /** tasks.manage — add, edit and tick off. */
+  /** tasks.manage — edit and tick off any item. */
   canManage: boolean;
+  /** May add items (defaults to canManage). */
+  canAdd?: boolean;
+  /** This user may tick off the items assigned to them, even without canManage. */
+  ownStepsOf?: string;
 }) {
   const [list, setList] = useState(items);
   const [, startTransition] = useTransition();
@@ -98,7 +104,7 @@ export function TaskChecklist({
             </span>
           )}
         </CardTitle>
-        {canManage && (
+        {canAdd && (
           <TaskFormDialog
             {...("meetingId" in parent
               ? { fixedMeetingId: parent.meetingId }
@@ -116,7 +122,7 @@ export function TaskChecklist({
         {list.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
             Nothing yet.
-            {canManage && ` ${emptyHint}`}
+            {canAdd && ` ${emptyHint}`}
           </p>
         ) : (
           <ul className="divide-y">
@@ -143,9 +149,11 @@ export function TaskChecklist({
                   </span>
                 </span>
               );
+              const canTick =
+                canManage || (ownStepsOf != null && task.assignee_id === ownStepsOf);
               return (
                 <li key={task.id} className="flex items-center gap-3 py-2">
-                  {canManage && (
+                  {canTick && (
                     <input
                       type="checkbox"
                       checked={done}
