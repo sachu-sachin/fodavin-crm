@@ -1,7 +1,8 @@
 // Fodavin Business OS — Prisma schema
-// Prisma owns the `public` tables + enums. Supabase-specific wiring
-// (FK to auth.users, the profile-on-signup trigger, is_admin(), RLS,
-// updated_at triggers) lives in supabase/setup.sql and is applied on top.
+// Prisma owns the `public` tables + enums. Supabase-specific wiring (the
+// profile sync triggers on auth.users, updated_at triggers, and the lock that
+// keeps Supabase's Data API out of these tables: RLS on, no policies, no
+// grants) lives in supabase/setup.sql. Re-run it after every schema change.
 //
 // Field names are kept snake_case to match the DB columns and the app's
 // existing domain types (src/lib/types.ts).

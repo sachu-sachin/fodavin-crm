@@ -4,6 +4,7 @@ import {
   type APIRequestContext,
   type APIResponse,
 } from "@playwright/test";
+import { Prisma } from "@prisma/client";
 
 // The app reads and writes everything through Prisma, so Supabase's Data API
 // must expose nothing — not to the public anon key, and not to a signed-in
@@ -16,29 +17,29 @@ import {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// `roles` and `profiles` always hold rows on the test project (seeded roles,
-// the fixture admin), so they prove reads return nothing rather than nothing
-// happening to be there.
-const TABLES = [
-  "roles",
-  "profiles",
-  "companies",
-  "contacts",
-  "inquiries",
-  "projects",
-  "tasks",
-  "payment_milestones",
-  "time_entries",
-  "documents",
-  "social_posts",
-  "google_accounts",
-];
+// Every table Prisma knows about, so a new model is probed as soon as it's
+// added. `roles` and `profiles` always hold rows on the test project (seeded
+// roles, the fixture admin), so they prove reads return nothing rather than
+// nothing happening to be there.
+const TABLES = Prisma.dmmf.datamodel.models.map((m) => m.dbName ?? m.name);
 
-/** Denied outright, or an empty result — either way no data came back. */
+/**
+ * Denied by a permission check, or an empty result — either way no data came
+ * back. Any other failure (a 404 for a renamed table, a 5xx) means the table
+ * wasn't really probed, so it fails the test instead of passing silently.
+ */
 async function expectNoRows(res: APIResponse, label: string) {
-  if (!res.ok()) return;
-  const body = await res.json();
-  expect(body, `${label} returned data through the Data API`).toEqual([]);
+  if (res.ok()) {
+    expect(await res.json(), `${label} returned data through the Data API`).toEqual([]);
+    return;
+  }
+  const body = await res.json().catch(() => ({}));
+  const denied =
+    res.status() === 401 || res.status() === 403 || body?.code === "42501";
+  expect(
+    denied,
+    `${label}: expected a permission denial, got ${res.status()} ${JSON.stringify(body)}`,
+  ).toBe(true);
 }
 
 async function signInAsFixtureAdmin(
