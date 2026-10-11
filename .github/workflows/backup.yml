@@ -1,0 +1,93 @@
+name: Database backup
+
+# Nightly encrypted pg_dump of the production Supabase database, kept as a
+# workflow artifact. The Supabase free plan has no usable backups of its own.
+# Setup, restore steps and limits: docs/backups.md.
+#
+# Scheduled runs only fire from the default branch (main).
+
+on:
+  schedule:
+    - cron: "30 20 * * *" # 02:00 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # pg_dump must be at least the server's major version. Supabase runs
+      # 15 or 17; 17 dumps both. Bump this if the project is upgraded.
+      PG_MAJOR: "17"
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Check secrets
+        run: |
+          [ -n "$BACKUP_DATABASE_URL" ] || { echo "::error::BACKUP_DATABASE_URL secret is not set (see docs/backups.md)"; exit 1; }
+          [ -n "$BACKUP_PASSPHRASE" ] || { echo "::error::BACKUP_PASSPHRASE secret is not set (see docs/backups.md)"; exit 1; }
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+
+      - name: Dump database
+        run: |
+          set -euo pipefail
+          bin="/usr/lib/postgresql/${PG_MAJOR}/bin"
+          echo "STAMP=$(date -u +%Y-%m-%dT%H%MZ)" >> "$GITHUB_ENV"
+
+          # App data (public) plus accounts (auth). Left out:
+          # - login sessions and everything hanging off them (refresh tokens,
+          #   MFA claims), the auth audit log, and one-time/flow tokens:
+          #   useless after a restore, and the backup shouldn't carry tokens;
+          # - auth.schema_migrations: a new project already has its own rows,
+          #   so restoring them would only collide.
+          "$bin/pg_dump" "$BACKUP_DATABASE_URL" \
+            --format=custom --no-owner --no-privileges \
+            --schema=public --schema=auth \
+            --exclude-table-data='auth.sessions' \
+            --exclude-table-data='auth.refresh_tokens' \
+            --exclude-table-data='auth.mfa_amr_claims' \
+            --exclude-table-data='auth.one_time_tokens' \
+            --exclude-table-data='auth.flow_state' \
+            --exclude-table-data='auth.audit_log_entries' \
+            --exclude-table-data='auth.schema_migrations' \
+            --file=backup.dump
+
+          # Fail loudly if the archive is unreadable or missing core tables.
+          "$bin/pg_restore" --list backup.dump > toc.txt
+          for t in public.profiles public.roles public.companies public.projects \
+                   public.tasks public.time_entries public.payment_milestones auth.users; do
+            grep -q "TABLE DATA ${t%%.*} ${t#*.} " toc.txt \
+              || { echo "::error::backup is missing table data for $t"; exit 1; }
+          done
+          ls -lh backup.dump
+
+      - name: Encrypt
+        run: |
+          set -euo pipefail
+          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 \
+            --output "fodavin-db-${STAMP}.dump.gpg" backup.dump <<< "$BACKUP_PASSPHRASE"
+          shred -u backup.dump toc.txt
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: fodavin-db-${{ env.STAMP }}
+          path: fodavin-db-*.dump.gpg
+          if-no-files-found: error
+          retention-days: 30
+          # Encrypted data doesn't compress.
+          compression-level: 0
