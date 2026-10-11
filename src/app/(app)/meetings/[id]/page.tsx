@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { can, requirePermission } from "@/lib/auth";
 import { MEETING_TYPES, type Meeting, type Task } from "@/lib/types";
 import { formatDateTimeIST, istToday } from "@/lib/format";
+import { durationLabel } from "@/lib/meetings";
 import { deleteMeeting } from "@/lib/actions/meetings";
 import { PageHeader } from "@/components/page-header";
 import { MeetingFormDialog } from "@/components/meeting-form-dialog";
@@ -21,11 +22,6 @@ const dateStr = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 const typeLabel = (v: string) =>
   MEETING_TYPES.find((t) => t.value === v)?.label ?? v;
 
-function durationLabel(minutes: number | null) {
-  if (!minutes) return null;
-  return minutes < 60 ? `${minutes} min` : `${minutes / 60} hr${minutes === 60 ? "" : "s"}`;
-}
-
 export default async function MeetingDetailPage({
   params,
 }: {
@@ -36,7 +32,7 @@ export default async function MeetingDetailPage({
   const canManageTasks = can(session, "tasks.manage");
   const { id } = await params;
 
-  const [meeting, companies, projects, profiles] = await Promise.all([
+  const [meeting, companies, openProjects, profiles] = await Promise.all([
     prisma.meeting.findUnique({
       where: { id },
       include: {
@@ -46,15 +42,20 @@ export default async function MeetingDetailPage({
         action_items: { orderBy: { created_at: "asc" } },
       },
     }),
-    prisma.company.findMany({
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.project.findMany({
-      where: { status: { not: "archived" } },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
+    // Only the edit form needs these.
+    canManage
+      ? prisma.company.findMany({
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      : [],
+    canManage
+      ? prisma.project.findMany({
+          where: { status: { not: "archived" } },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      : [],
     // Inactive people too, so a past attendee who has since left still shows
     // by name; only active ones are offered in the forms.
     prisma.profile.findMany({
@@ -64,6 +65,14 @@ export default async function MeetingDetailPage({
   ]);
 
   if (!meeting) notFound();
+
+  // A meeting can belong to a project that has since been archived. Offer it
+  // in the edit form anyway, or the select would fall back to "None" and
+  // saving would silently unlink it.
+  const projects =
+    meeting.project && !openProjects.some((p) => p.id === meeting.project!.id)
+      ? [meeting.project, ...openProjects]
+      : openProjects;
 
   const nameOf = new Map(
     profiles.map((p) => [p.id, p.full_name || p.email?.split("@")[0] || "User"]),
@@ -161,8 +170,11 @@ export default async function MeetingDetailPage({
             canManage={canManageTasks}
           />
 
+          {/* Keyed by meeting, not updated_at: saving the details dialog bumps
+              updated_at, and remounting here would throw away notes that are
+              typed but not saved yet. */}
           <MeetingNotesEditor
-            key={serialized.updated_at}
+            key={meeting.id}
             meetingId={meeting.id}
             notes={meeting.notes}
             decisions={meeting.decisions}
