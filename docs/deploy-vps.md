@@ -1,99 +1,85 @@
-# Deploying to your own server (VPS)
+# Running on the VPS
 
-Moving the app from Vercel to a VPS moves **no data**. Everything (accounts,
-clients, projects, files in the storage bucket) stays in Supabase, and the
-server only runs the Next.js app. Done in this order, the switch has no
-downtime and is reversible until the very end.
+Since 2026-10-11 the CRM runs on a Hostinger VPS (Ubuntu 24.04) and its
+database is the Supabase project in **Mumbai (`ap-south-1`)**, about 11 ms
+away. Vercel is no longer used. The server only runs the Next.js app; all
+data (accounts, clients, projects, uploaded files) lives in Supabase.
 
-Assumes Ubuntu/Debian, a domain you control (`os.fodavin.com` below) and
-`sudo` access. Adapt names and paths to taste.
+> **The VPS is shared** with other live sites (their own Nginx sites, pm2
+> apps and MySQL). Only touch the `fodavin-crm` pieces listed here.
 
-## 1. Before you start
+| Piece | Where |
+|---|---|
+| App user | `fodavin` (system user, no login shell) |
+| Live code | `/srv/fodavin-crm/app` |
+| Previous release (for rollback) | `/srv/fodavin-crm/app.prev` |
+| Secrets | `/srv/fodavin-crm/app/.env.local`, mode 600, owner `fodavin` |
+| Service | `fodavin-crm` (systemd), listens on `127.0.0.1:3010` only |
+| Public entry | Nginx site `fodavin-crm`, port **8090** → `http://<server-ip>:8090` |
+| Database backups taken before changes | `/root/fodavin-backups/` (root only) |
 
-- **Release order.** If this deploy includes database changes (new tables or
-  columns), apply them to the live database *before* the new code runs there:
-  merge → `npm run db:push` → `npm run db:setup` → `npm run db:seed` → deploy.
-  New code against an old schema makes the new pages fail. See the
-  "Database changes" rules in `AGENTS.md`.
-- Keep the Vercel deployment running until step 7. Both can serve the same
-  Supabase database at once.
+## 1. Server basics (one time)
 
-## 2. Server basics
-
-```bash
-sudo apt update && sudo apt install -y git nginx
-# Node 22 LTS (Next.js 16 needs Node 20.9+; CI uses 22)
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
-sudo adduser --system --group --home /srv/fodavin fodavin
-```
-
-Firewall: allow SSH and HTTP/HTTPS only. The app port (3000) stays private.
-
-```bash
-sudo ufw allow OpenSSH && sudo ufw allow 'Nginx Full' && sudo ufw enable
-```
-
-## 3. Code and secrets
-
-The repository is private, so give the server its own **read-only deploy
-key** rather than your personal GitHub login. A deploy key opens this one
-repository and nothing else, and can be revoked on its own:
-
-```bash
-sudo -u fodavin install -d -m 700 /srv/fodavin/.ssh
-sudo -u fodavin ssh-keygen -t ed25519 -N "" -f /srv/fodavin/.ssh/id_ed25519
-sudo cat /srv/fodavin/.ssh/id_ed25519.pub
-```
-
-Add that public key under GitHub → the repo → Settings → Deploy keys (leave
-"Allow write access" off), then clone over SSH:
-
-```bash
-sudo -u fodavin git clone git@github.com:sachu-sachin/fodavin-crm.git /srv/fodavin/app
-```
-
-Copy the **production** env file to `/srv/fodavin/app/.env.local` using a
-secure channel (`scp` over SSH, or paste from your password manager), never
-email or chat. Then:
-
-- set `APP_URL=https://os.fodavin.com`, the exact public address with no
-  trailing slash;
-- lock the file down:
+- Node.js **20.9 or newer** (Next.js 16's minimum). The server's system Node
+  is shared with the other apps, so don't upgrade it globally without
+  checking them; if you need a newer one, point the service at a separate
+  Node install.
+- `nginx`, `ufw` and the PostgreSQL 17 client (for backups):
   ```bash
-  sudo chown fodavin:fodavin /srv/fodavin/app/.env.local
-  sudo chmod 600 /srv/fodavin/app/.env.local
+  sudo apt install -y postgresql-common
+  sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+  sudo apt install -y postgresql-client-17
   ```
+- Firewall: allow the app's public port on the server **and** in Hostinger's
+  panel if a firewall configuration is active there.
+  ```bash
+  sudo ufw allow 8090/tcp comment 'fodavin-crm'
+  ```
+  > **Hostinger panel firewall:** activating a configuration blocks every port
+  > that isn't listed in it. Before activating one, make sure it allows
+  > **22, 80, 443 and 8090** (and anything else the other apps use), or all the
+  > other sites and SSH go down at once.
 
-Name it `.env.local`, not `.env`. Next.js loads it in production; Prisma's CLI
-and the E2E tooling don't, which keeps the live database out of their reach.
+## 2. Secrets
 
-```bash
-cd /srv/fodavin/app
-sudo -u fodavin npm ci
-sudo -u fodavin npm run build    # runs prisma generate, then next build
-```
+`/srv/fodavin-crm/app/.env.local` holds the production values (copy over SSH,
+never email or chat). Two things differ from a local setup:
 
-The build doesn't touch the database. **Never** add `db:push` or `db:setup`
-to an automatic deploy step: schema changes are run by hand, deliberately.
+- `APP_URL` is the public address, e.g. `http://<server-ip>:8090`, no trailing
+  slash.
+- `DATABASE_URL` uses the **session pooler** (port 5432, same host as
+  `DIRECT_URL`) with `?connection_limit=5` appended. The transaction pooler
+  (6543, `pgbouncer=true`) is meant for serverless hosts that open a new
+  connection per request; on a long-running server it costs several extra
+  round trips per query (measured ~5x slower).
 
-## 4. Keep it running (systemd)
+Every `npm run db:*` script loads `.env.local`, so on the server (and on any
+machine whose `.env.local` holds production values) **each of them writes to
+the live database**.
 
-`/etc/systemd/system/fodavin.service`:
+## 3. The service
+
+`/etc/systemd/system/fodavin-crm.service`:
 
 ```ini
 [Unit]
-Description=Fodavin Business OS
+Description=Fodavin CRM (Next.js)
 After=network.target
 
 [Service]
 Type=simple
 User=fodavin
-WorkingDirectory=/srv/fodavin/app
+Group=fodavin
+WorkingDirectory=/srv/fodavin-crm/app
 Environment=NODE_ENV=production
-# Listen on localhost only; Nginx is the public entry point.
-ExecStart=/usr/bin/npm run start -- -H 127.0.0.1 -p 3000
+Environment=NEXT_TELEMETRY_DISABLED=1
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3010
 Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
 
 [Install]
 WantedBy=multi-user.target
@@ -101,91 +87,118 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now fodavin
-curl -I http://127.0.0.1:3000/login    # expect 200
+sudo systemctl enable --now fodavin-crm
+journalctl -u fodavin-crm -f        # logs
 ```
 
-## 5. Nginx and HTTPS
+## 4. Nginx
 
-`/etc/nginx/sites-available/fodavin`:
+`/etc/nginx/sites-available/fodavin-crm` (linked into `sites-enabled`):
 
 ```nginx
-server {
-    listen 80;
-    server_name os.fodavin.com;
+# Only send "Connection: upgrade" when the client actually asks for one.
+map $http_upgrade $fodavin_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
 
-    # Document uploads go up to 10 MB (the app allows 12 MB including form
-    # overhead). Nginx's default is 1 MB, which would reject them.
+server {
+    listen 8090;
+    listen [::]:8090;
+    server_name _;
+
+    # Document uploads go up to 10 MB; Nginx's default is 1 MB.
     client_max_body_size 12m;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3010;
         proxy_http_version 1.1;
-
-        # REQUIRED: Next.js checks that form submissions (Server Actions)
-        # come from the same host. Without the original Host header, every
-        # save fails with "Invalid Server Actions request".
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
+        # REQUIRED: Next.js rejects form submissions (Server Actions) whose
+        # Origin doesn't match the host. $http_host keeps the ":8090" port;
+        # $host would drop it and every save would fail.
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Host $http_host;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $fodavin_connection_upgrade;
+        proxy_read_timeout 120s;
     }
 }
 ```
 
+Always check before reloading, since the other sites share this Nginx:
+
 ```bash
-sudo ln -s /etc/nginx/sites-available/fodavin /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-Point a **test** hostname at the server first if you can, or test with a
-`hosts`-file entry. Then add HTTPS:
+## 5. Deploying an update
 
-```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d os.fodavin.com
-```
+Build the new version **beside** the live one and switch over, so the site
+keeps running during the build (building in place would break the running
+server while `.next` and `node_modules` are replaced) and the old version is
+one move away.
 
-## 6. Outside services that know the address
+1. **Back up the database** (keeps accounts and app data; leaves out session
+   tokens):
+   ```bash
+   sudo install -d -m 700 /root/fodavin-backups
+   pg_dump "$DIRECT_URL" --format=custom --no-owner --no-privileges \
+     --schema=public --schema=auth \
+     --exclude-table-data='auth.sessions' --exclude-table-data='auth.refresh_tokens' \
+     --exclude-table-data='auth.mfa_amr_claims' --exclude-table-data='auth.one_time_tokens' \
+     --exclude-table-data='auth.flow_state' --exclude-table-data='auth.audit_log_entries' \
+     --exclude-table-data='auth.schema_migrations' \
+     -f /root/fodavin-backups/pre-deploy-$(date -u +%Y%m%dT%H%MZ).dump
+   ```
+2. **Build in `/srv/fodavin-crm/next`**: unpack the release there (e.g. a
+   `git archive` of the branch), copy `.env.local` from `app/`, then as
+   `fodavin`: `npm ci` and `npm run build`. The build doesn't touch the
+   database.
+3. **Schema changes, if any**, from the new folder: `npx dotenv -e .env.local
+   -- npx prisma db push --skip-generate`, then re-run `supabase/setup.sql`
+   (`psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f supabase/setup.sql`). Only
+   additive changes — new tables, new nullable columns — so the running
+   version keeps working. `db push` stops by itself if a change would lose
+   data.
+4. **New permissions, if any**: add them to the template roles with a script
+   that only adds. **Don't run `db:seed` here** — it overwrites the template
+   roles' permissions and undoes changes made on the Roles page.
+5. **Switch** (a few seconds of downtime):
+   ```bash
+   sudo systemctl stop fodavin-crm
+   sudo rm -rf /srv/fodavin-crm/app.prev
+   sudo mv /srv/fodavin-crm/app /srv/fodavin-crm/app.prev
+   sudo mv /srv/fodavin-crm/next /srv/fodavin-crm/app
+   sudo systemctl start fodavin-crm
+   curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/login   # expect 200
+   ```
+   **Rollback:** stop the service, move `app` back to `next` and `app.prev`
+   back to `app`, start it again.
 
-- **Supabase** → Authentication → URL Configuration: set **Site URL** to
-  `https://os.fodavin.com` and add it to the redirect URLs.
-- **Google Cloud Console** (only if Drive uploads are used) → Credentials → the
-  OAuth client → add `https://os.fodavin.com/api/google/callback` as an
-  authorised redirect URI. It must match `APP_URL` exactly. The Drive account
-  already connected keeps working; this is needed to reconnect it.
+## 6. Supabase settings (dashboard, not in code)
 
-## 7. Verify, then switch
+- **Authentication → Sign In / Providers → "Allow new users to sign up": OFF.**
+  Accounts are created by admins inside the CRM (with the service key, which
+  isn't affected). With sign-ups on, anyone holding the public anon key could
+  create an account, and the signup trigger takes the new profile's role from
+  data the sign-up supplies.
+- **Authentication → URL Configuration → Site URL**: the CRM's public address.
+- **Google Drive uploads** need an `https://` address on a real domain: Google
+  doesn't accept a bare IP as an OAuth redirect. Uploads stored in Supabase
+  work either way.
 
-On the new server:
+## 7. HTTPS with a domain (later)
 
-- [ ] Sign in, and open every section in the sidebar.
-- [ ] Make a harmless edit and save it (this checks the Host header).
-- [ ] Upload a small document to a project, open it, then delete it (this
-      checks the body-size limit and storage).
-- [ ] The dashboard cards load.
+Point a domain's DNS at the server, give the Nginx site a `server_name` and
+`listen 80`, run `sudo certbot --nginx -d <domain>`, then update `APP_URL`,
+the Supabase Site URL and (for Drive) the Google redirect URI to the new
+`https://` address, and restart the service.
 
-Then point the domain's DNS at the VPS. Once traffic has moved over and
-things look right for a day, remove or pause the Vercel project, and delete its
-copies of the environment variables.
+## Backups
 
-**Rollback:** until Vercel is removed, point DNS back at it. Nothing in the
-database depends on where the app runs.
-
-## Updating later
-
-```bash
-cd /srv/fodavin/app
-sudo -u fodavin git pull
-# If the release changes the schema, run db:push / db:setup / db:seed now
-# (by hand, deliberately), before restarting.
-sudo -u fodavin npm ci
-sudo -u fodavin npm run build
-sudo systemctl restart fodavin
-```
-
-The nightly database backup (`docs/backups.md`) runs in GitHub Actions against
-Supabase directly, so it doesn't depend on where the app is hosted.
+The nightly encrypted backup (`docs/backups.md`) runs in GitHub Actions
+against Supabase directly; its `BACKUP_DATABASE_URL` secret must be the Mumbai
+project's session pooler URL.

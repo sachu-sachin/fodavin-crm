@@ -11,10 +11,12 @@ talks to a live production database.
 
 ## Environments
 
-- **`.env.local` is the LIVE production Supabase project.** Read-only checks are
-  fine. Never run `npm run test:e2e`, `db:push`, `db:setup`, `db:seed` or any
-  other write against it without the owner's explicit go-ahead *for that
-  specific change*.
+- **`.env.local` is the LIVE production Supabase project** (Mumbai,
+  `ap-south-1`, since 2026-10-11). Read-only checks are fine. Never run
+  `npm run test:e2e`, `db:push`, `db:setup`, `db:seed` or any other write
+  against it without the owner's explicit go-ahead *for that specific change*.
+  Every `npm run db:*` script loads `.env.local`, so each one is a write to
+  production.
 - **`.env.test.local` is the disposable test project** (see `docs/testing.md`).
   Every test run and every schema change happens there first.
 - Never name the live file `.env`: Prisma and Next.js (in test mode) load `.env`
@@ -33,9 +35,17 @@ talks to a live production database.
 - The app never uses Supabase's Data API (all access is Prisma plus server-side
   `authorize()`). Keep it that way: no RLS policies, no grants. See Finding 11
   in `docs/testing.md`.
-- New tables with an `updated_at` column go in the trigger list in `setup.sql`.
-- Release order: merge → `db:push` → `db:setup` → `db:seed` → deploy code.
-  Code that expects new tables must never run against an old schema.
+- `updated_at` triggers are added automatically to every table with that
+  column when `setup.sql` runs; there is no list to maintain.
+- **Don't run `db:seed` on production.** It overwrites the permissions of every
+  template role (Admin, Developer, …), undoing any changes the owner made in
+  the Roles page. To roll out a new permission, add it to the template roles
+  with a small script that only adds (see `docs/deploy-vps.md`).
+- Release order: back up the database → `db:push` → `db:setup` → switch the
+  server to the new build. Schema changes must be additive so the running
+  version keeps working until the switch. Code that expects new tables must
+  never run against an old schema. (There is no auto-deploy: the app runs on
+  the VPS and is only updated by hand, so this order is in your control.)
 
 ## Code
 
@@ -56,8 +66,9 @@ talks to a live production database.
   can sweep it.
 - `next dev` rewrites `tsconfig.json` when it starts. Revert that
   (`git checkout -- tsconfig.json`) before committing.
-- Timesheet "copy last week" fails intermittently and is already documented
-  (Finding 5). It isn't a regression unless it fails consistently.
+- Timesheet "copy last week" used to fail intermittently; the cause (a
+  week-navigation race) was fixed (Finding 12). A failure there now is a
+  real regression.
 
 ## Git
 
