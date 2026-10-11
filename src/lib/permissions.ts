@@ -27,6 +27,8 @@ export const PERMISSIONS = [
   "meetings.view",
   "meetings.manage",
 
+  "announcements.manage",
+
   "finance.view",
   "finance.manage",
 
@@ -139,6 +141,18 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         value: "meetings.manage",
         label: "Schedule, edit and delete meetings",
         hint: "Adding action items also needs “Create, edit, assign and move tasks”.",
+      },
+    ],
+  },
+  {
+    key: "announcements",
+    label: "Announcements",
+    description: "Company notices and policies. Everyone can read the ones meant for them.",
+    permissions: [
+      {
+        value: "announcements.manage",
+        label: "Post, edit and delete announcements",
+        hint: "Also shows who has read or acknowledged each one.",
       },
     ],
   },
@@ -293,6 +307,7 @@ export const ROLE_TEMPLATES: {
       "projects.view", "projects.manage",
       "tasks.view", "tasks.manage",
       "meetings.view", "meetings.manage",
+      "announcements.manage",
       "finance.view", "finance.manage",
       "documents.view", "documents.upload", "documents.delete",
       "timesheet.log", "timesheet.view_all", "timesheet.manage_all",

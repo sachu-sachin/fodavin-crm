@@ -149,6 +149,14 @@ enum MeetingType {
   review
 }
 
+enum AnnouncementCategory {
+  general
+  policy
+  holiday
+  event
+  urgent
+}
+
 enum PostCategory {
   brand_awareness
   services
@@ -186,11 +194,12 @@ model Profile {
   is_active  Boolean  @default(true)
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
-  role           Role?             @relation(fields: [role_id], references: [id], onDelete: SetNull)
-  assigned_tasks Task[]            @relation("TaskAssignee")
-  assigned_posts SocialPost[]      @relation("PostAssignee")
-  time_entries   TimeEntry[]
-  meetings       MeetingAttendee[]
+  role               Role?              @relation(fields: [role_id], references: [id], onDelete: SetNull)
+  assigned_tasks     Task[]             @relation("TaskAssignee")
+  assigned_posts     SocialPost[]       @relation("PostAssignee")
+  time_entries       TimeEntry[]
+  meetings           MeetingAttendee[]
+  announcement_reads AnnouncementRead[]
 
   @@index([role_id])
   @@map("profiles")
@@ -372,6 +381,46 @@ model Meeting {
   @@index([company_id])
   @@index([project_id])
   @@map("meetings")
+}
+
+/// A company-wide notice or policy. Visible to everyone, or only to the roles
+/// in `audience_role_ids`, between `publish_at` and `expires_at`.
+model Announcement {
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title             String
+  body              String
+  category          AnnouncementCategory @default(general)
+  /// Pinned ones stay at the top while live.
+  pinned            Boolean              @default(false)
+  /// Policies people must confirm they've read, not just see.
+  requires_ack      Boolean              @default(false)
+  /// Empty means everyone. Stale ids (a deleted role) simply match nobody.
+  audience_role_ids String[]             @default([]) @db.Uuid
+  /// A future time schedules it; it stays hidden from staff until then.
+  publish_at        DateTime             @default(now()) @db.Timestamptz(6)
+  expires_at        DateTime?            @db.Timestamptz(6)
+  created_by        String?              @db.Uuid
+  created_at        DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime             @default(now()) @db.Timestamptz(6)
+
+  reads AnnouncementRead[]
+
+  @@index([publish_at])
+  @@map("announcements")
+}
+
+/// Who has read (or, for requires_ack, acknowledged) an announcement.
+model AnnouncementRead {
+  announcement_id String   @db.Uuid
+  profile_id      String   @db.Uuid
+  read_at         DateTime @default(now()) @db.Timestamptz(6)
+
+  announcement Announcement @relation(fields: [announcement_id], references: [id], onDelete: Cascade)
+  profile      Profile      @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@id([announcement_id, profile_id])
+  @@index([profile_id])
+  @@map("announcement_reads")
 }
 
 /// Team members attending a meeting. Client-side attendees go in the notes;

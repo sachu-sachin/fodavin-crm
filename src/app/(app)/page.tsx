@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { can, getSessionProfile } from "@/lib/auth";
 import {
+  ANNOUNCEMENT_CATEGORY_MAP,
   OPEN_INQUIRY_STAGES,
   RENEWAL_WINDOW_DAYS,
   UNPAID_MILESTONE_STATUSES,
@@ -10,6 +11,7 @@ import {
 import { formatDateKey, formatINR, formatTimeIST, istToday } from "@/lib/format";
 import { RENEWAL_TONE, renewalStatus } from "@/lib/renewals";
 import { addDays } from "@/lib/week";
+import { liveForRoleWhere } from "@/lib/announcements";
 import { PageHeader } from "@/components/page-header";
 import { DashboardCard, DashboardRow } from "@/components/dashboard-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +36,10 @@ export default async function DashboardPage() {
     `${addDays(today, RENEWAL_WINDOW_DAYS)}T23:59:59+05:30`,
   );
   const weekAhead = new Date(`${addDays(today, 7)}T23:59:59+05:30`);
+  const unreadWhere = {
+    ...liveForRoleWhere(session.profile?.role_id ?? null, new Date()),
+    reads: { none: { profile_id: session.userId } },
+  };
 
   const [
     companies,
@@ -46,6 +52,8 @@ export default async function DashboardPage() {
     renewalProjects,
     myTasks,
     todaysMeetings,
+    unreadAnnouncements,
+    unreadAnnouncementCount,
   ] = await Promise.all([
     prisma.company.count(),
     prisma.inquiry.count({ where: { stage: { notIn: ["won", "lost"] } } }),
@@ -131,6 +139,15 @@ export default async function DashboardPage() {
           orderBy: { starts_at: "asc" },
         })
       : [],
+    // Everyone sees this one: announcements have no view permission.
+    prisma.announcement.findMany({
+      where: unreadWhere,
+      select: { id: true, title: true, category: true, requires_ack: true },
+      orderBy: [{ pinned: "desc" }, { publish_at: "desc" }],
+      take: 5,
+    }),
+    // The card lists 5 but counts them all.
+    prisma.announcement.count({ where: unreadWhere }),
   ]);
 
   const outstanding = Number(outstandingTotal._sum.amount ?? 0);
@@ -204,6 +221,31 @@ export default async function DashboardPage() {
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        {unreadAnnouncements.length > 0 && (
+        <DashboardCard
+          title="Unread announcements"
+          count={unreadAnnouncementCount}
+          tone="warn"
+          empty=""
+        >
+          {unreadAnnouncements.map((a) => (
+            <DashboardRow
+              key={a.id}
+              href={`/announcements#announcement-${a.id}`}
+              primary={a.title}
+              secondary={a.requires_ack ? "Please confirm you've read it" : null}
+              trailing={
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${ANNOUNCEMENT_CATEGORY_MAP[a.category].badge}`}
+                >
+                  {ANNOUNCEMENT_CATEGORY_MAP[a.category].label}
+                </span>
+              }
+            />
+          ))}
+        </DashboardCard>
+        )}
+
         <DashboardCard
           title="My tasks this week"
           count={myTasks.length}
