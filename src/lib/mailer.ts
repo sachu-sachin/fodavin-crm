@@ -37,10 +37,18 @@ export function createMailer(config: MailConfig) {
     secure: config.port === 465,
     requireTLS: config.port !== 465,
     auth: { user: config.user, pass: config.pass },
+    // One connection reused for the whole run, instead of a new TCP + TLS +
+    // login per email (slow, and providers rate-limit repeated logins).
+    pool: true,
+    maxConnections: 1,
   });
   return {
     async send(mail: OutgoingMail): Promise<void> {
       await transport.sendMail({ from: config.from, ...mail });
+    },
+    /** Close the pooled connection once the run is over. */
+    close(): void {
+      transport.close();
     },
   };
 }

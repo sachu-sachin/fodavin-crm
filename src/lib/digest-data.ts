@@ -60,6 +60,7 @@ export async function loadDigestInputs(
         onboarding_id: true,
         project: { select: { name: true } },
         meeting: { select: { title: true } },
+        onboarding: { select: { profile: { select: { full_name: true, email: true } } } },
       },
     }),
     prisma.meeting.findMany({
@@ -87,7 +88,9 @@ export async function loadDigestInputs(
         assignee_id: { not: null },
         status: { notIn: ["published", "cancelled"] },
         OR: [
-          { reminder_at: { lte: endOfToday } },
+          // Only reminders set for today: an old one on a post that was never
+          // published would otherwise repeat in every email indefinitely.
+          { reminder_at: { gte: startOfToday, lte: endOfToday } },
           { scheduled_at: { gte: startOfToday, lte: endOfToday } },
         ],
       },
@@ -133,7 +136,13 @@ export async function loadDigestInputs(
       due: dateKey(t.due_date!),
       assigneeId: t.assignee_id!,
       href: taskHref(t),
-      context: t.project?.name ?? (t.meeting ? `from "${t.meeting.title}"` : null),
+      context:
+        t.project?.name ??
+        (t.meeting
+          ? `from "${t.meeting.title}"`
+          : t.onboarding
+            ? `onboarding: ${t.onboarding.profile.full_name || t.onboarding.profile.email?.split("@")[0] || "a new joiner"}`
+            : null),
     })),
     meetings: meetings.map((m) => ({
       id: m.id,
@@ -157,7 +166,8 @@ export async function loadDigestInputs(
         p.scheduled_at && p.scheduled_at >= startOfToday && p.scheduled_at <= endOfToday
           ? p.scheduled_at.toISOString()
           : null,
-      reminderDue: p.reminder_at != null && p.reminder_at <= endOfToday,
+      reminderDue:
+        p.reminder_at != null && p.reminder_at >= startOfToday && p.reminder_at <= endOfToday,
     })),
     policies: policies.map((a) => ({
       id: a.id,

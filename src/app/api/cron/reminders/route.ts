@@ -12,6 +12,11 @@ import {
 import { createMailer, mailConfig } from "@/lib/mailer";
 
 export const dynamic = "force-dynamic";
+// Emails go out one at a time; on a serverless host the default limit could
+// cut a run short after a person's day was claimed but before their email
+// was sent (that claim would then block them until tomorrow). No effect when
+// self-hosted.
+export const maxDuration = 300;
 
 type SkipReason = "opted_out" | "no_email" | "nothing_due" | "already_sent";
 
@@ -63,60 +68,64 @@ export async function POST(request: NextRequest) {
   const failures: { id: string; error: string }[] = [];
   let sent = 0;
 
-  for (const person of people) {
-    if (!person.emailDigest) {
-      skipped.opted_out++;
-      continue;
-    }
-    if (!person.email) {
-      skipped.no_email++;
-      continue;
-    }
-    const sections = digestFor(person, source, day);
-    if (sections.length === 0) {
-      skipped.nothing_due++;
-      continue;
-    }
-    const subject = digestSubject(sections);
-    const itemCount = sections.reduce((n, s) => n + s.items.length, 0);
+  try {
+    for (const person of people) {
+      if (!person.emailDigest) {
+        skipped.opted_out++;
+        continue;
+      }
+      if (!person.email) {
+        skipped.no_email++;
+        continue;
+      }
+      const sections = digestFor(person, source, day);
+      if (sections.length === 0) {
+        skipped.nothing_due++;
+        continue;
+      }
+      const subject = digestSubject(sections);
+      const itemCount = sections.reduce((n, s) => n + s.items.length, 0);
 
-    if (dry) {
-      preview.push({
-        id: person.id,
-        name: person.name,
-        subject,
-        items: sections.flatMap((s) => s.items.map((i) => `${s.title}: ${i.text}`)),
-      });
-      continue;
-    }
+      if (dry) {
+        preview.push({
+          id: person.id,
+          name: person.name,
+          subject,
+          items: sections.flatMap((s) => s.items.map((i) => `${s.title}: ${i.text}`)),
+        });
+        continue;
+      }
 
-    const claim = await prisma.digestLog.createMany({
-      data: [{ profile_id: person.id, day, item_count: itemCount }],
-      skipDuplicates: true,
-    });
-    if (claim.count === 0) {
-      skipped.already_sent++;
-      continue;
-    }
+      const claim = await prisma.digestLog.createMany({
+        data: [{ profile_id: person.id, day, item_count: itemCount }],
+        skipDuplicates: true,
+      });
+      if (claim.count === 0) {
+        skipped.already_sent++;
+        continue;
+      }
 
-    try {
-      await mailer!.send({
-        to: person.email,
-        subject,
-        text: renderDigestText(person.name, sections, appUrl),
-        html: renderDigestHtml(person.name, sections, appUrl),
-      });
-      sent++;
-    } catch (err) {
-      await prisma.digestLog
-        .delete({ where: { profile_id_day: { profile_id: person.id, day } } })
-        .catch(() => {});
-      // The provider's message only; never the credentials.
-      failures.push({
-        id: person.id,
-        error: err instanceof Error ? err.message.slice(0, 200) : "Unknown error",
-      });
+      try {
+        await mailer!.send({
+          to: person.email,
+          subject,
+          text: renderDigestText(person.name, sections, appUrl),
+          html: renderDigestHtml(person.name, sections, appUrl),
+        });
+        sent++;
+      } catch (err) {
+        await prisma.digestLog
+          .delete({ where: { profile_id_day: { profile_id: person.id, day } } })
+          .catch(() => {});
+        // The provider's message only; never the credentials.
+        failures.push({
+          id: person.id,
+          error: err instanceof Error ? err.message.slice(0, 200) : "Unknown error",
+        });
+      }
     }
+  } finally {
+    mailer?.close();
   }
 
   return NextResponse.json(

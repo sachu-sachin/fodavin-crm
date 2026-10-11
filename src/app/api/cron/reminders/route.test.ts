@@ -73,7 +73,7 @@ beforeEach(() => {
     pass: "p",
     from: "OS <os@example.com>",
   });
-  vi.mocked(createMailer).mockReturnValue({ send } as never);
+  vi.mocked(createMailer).mockReturnValue({ send, close: vi.fn() } as never);
   vi.mocked(prisma.digestLog.createMany).mockResolvedValue({ count: 1 });
   vi.mocked(prisma.digestLog.delete).mockResolvedValue({} as never);
 });

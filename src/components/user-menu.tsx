@@ -31,8 +31,14 @@ export function UserMenu({ name, email, avatarUrl, emailDigest }: UserMenuProps)
     const next = !digestOn;
     setDigestOn(next);
     startTransition(async () => {
-      await setEmailDigest(next);
-      toast.success(next ? "Daily reminder email on" : "Daily reminder email off");
+      try {
+        await setEmailDigest(next);
+        toast.success(next ? "Daily reminder email on" : "Daily reminder email off");
+      } catch {
+        // Show what's really saved, so nobody thinks they've turned it off.
+        setDigestOn(!next);
+        toast.error("Couldn't save that. Reload and try again.");
+      }
     });
   }
 

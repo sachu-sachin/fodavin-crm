@@ -40,8 +40,10 @@ jobs:
           fi
           url="${REMINDERS_APP_URL%/}/api/cron/reminders"
           [ "$DRY" = "1" ] && url="$url?dry=1"
-          # -f: a non-2xx answer (e.g. a failed send → 502) fails the run.
-          curl -fsS --max-time 120 -X POST \
+          # --fail-with-body: a non-2xx answer (e.g. a failed send → 502)
+          # fails the run but still prints which sends failed and why.
+          # The dry-run preview (names and task titles) is left out of the
+          # log, which everyone with repo access can read; counts stay.
+          curl -sS --fail-with-body --max-time 120 -X POST \
             -H "Authorization: Bearer $CRON_SECRET" \
-            "$url" | tee response.json
-          echo
+            "$url" | jq 'del(.preview)'
