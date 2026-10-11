@@ -24,6 +24,9 @@ export const PERMISSIONS = [
   "tasks.view",
   "tasks.manage",
 
+  "meetings.view",
+  "meetings.manage",
+
   "finance.view",
   "finance.manage",
 
@@ -123,6 +126,23 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    key: "meetings",
+    label: "Meetings",
+    description: "Meeting notes, decisions and attendees.",
+    permissions: [
+      {
+        value: "meetings.view",
+        label: "View meetings",
+        hint: "Includes each meeting's action items.",
+      },
+      {
+        value: "meetings.manage",
+        label: "Schedule, edit and delete meetings",
+        hint: "Adding action items also needs “Create, edit, assign and move tasks”.",
+      },
+    ],
+  },
+  {
     key: "finance",
     label: "Finance",
     description:
@@ -217,6 +237,7 @@ const IMPLIES: Partial<Record<Permission, Permission[]>> = {
   "projects.manage": ["projects.view"],
   "projects.delete": ["projects.view", "projects.manage"],
   "tasks.manage": ["tasks.view"],
+  "meetings.manage": ["meetings.view"],
   "finance.manage": ["finance.view"],
   "documents.upload": ["documents.view"],
   "documents.delete": ["documents.view"],
@@ -271,6 +292,7 @@ export const ROLE_TEMPLATES: {
       "pipeline.view", "pipeline.manage", "pipeline.delete",
       "projects.view", "projects.manage",
       "tasks.view", "tasks.manage",
+      "meetings.view", "meetings.manage",
       "finance.view", "finance.manage",
       "documents.view", "documents.upload", "documents.delete",
       "timesheet.log", "timesheet.view_all", "timesheet.manage_all",
@@ -286,6 +308,7 @@ export const ROLE_TEMPLATES: {
       "clients.view",
       "projects.view",
       "tasks.view", "tasks.manage",
+      "meetings.view",
       "documents.view", "documents.upload",
       "timesheet.log",
       "team.view",
@@ -299,6 +322,7 @@ export const ROLE_TEMPLATES: {
       "clients.view",
       "projects.view",
       "tasks.view", "tasks.manage",
+      "meetings.view",
       "documents.view", "documents.upload",
       "timesheet.log",
       "team.view",
@@ -312,6 +336,7 @@ export const ROLE_TEMPLATES: {
       "clients.view",
       "projects.view",
       "tasks.view", "tasks.manage",
+      "meetings.view",
       "documents.view", "documents.upload",
       "timesheet.log",
       "team.view",
@@ -324,6 +349,7 @@ export const ROLE_TEMPLATES: {
     permissions: [
       "projects.view",
       "tasks.view", "tasks.manage",
+      "meetings.view",
       "documents.view",
       "timesheet.log",
       "team.view",
@@ -337,6 +363,7 @@ export const ROLE_TEMPLATES: {
       "clients.view",
       "pipeline.view", "pipeline.manage",
       "social.view", "social.manage",
+      "meetings.view",
       "documents.view", "documents.upload",
       "timesheet.log",
       "team.view",

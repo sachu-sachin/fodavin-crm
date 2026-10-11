@@ -12,7 +12,11 @@ import { formatDateShortIST } from "@/lib/format";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { Badge } from "@/components/ui/badge";
 
-export type BoardTask = Task & { project_name?: string | null };
+export type BoardTask = Task & {
+  project_name?: string | null;
+  /** For an action item with no project, the meeting it came from. */
+  meeting_title?: string | null;
+};
 
 const TYPE_LABEL = Object.fromEntries(
   TASK_TYPES.map((t) => [t.value, t.label]),
@@ -111,9 +115,9 @@ export function TaskBoard({
                         className="cursor-grab rounded-md border bg-card p-3 shadow-sm hover:border-primary/50 active:cursor-grabbing"
                       >
                         <p className="text-sm font-medium">{task.title}</p>
-                        {showProject && task.project_name && (
+                        {showProject && (task.project_name || task.meeting_title) && (
                           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {task.project_name}
+                            {task.project_name ?? `Meeting: ${task.meeting_title}`}
                           </p>
                         )}
                         <div className="mt-2 flex items-center justify-between gap-2">

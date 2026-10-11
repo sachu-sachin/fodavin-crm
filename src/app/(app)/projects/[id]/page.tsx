@@ -12,6 +12,7 @@ import {
   type Task,
 } from "@/lib/types";
 import { formatINR, formatDateIST, formatDateKey, istToday } from "@/lib/format";
+import { MEETING_LIST_SELECT, toMeetingListItem } from "@/lib/meetings";
 import { RENEWAL_TONE, renewalStatus } from "@/lib/renewals";
 import { getConnectedAccount } from "@/lib/google/drive";
 import { SUPABASE_MAX_BYTES } from "@/lib/google/config";
@@ -22,6 +23,7 @@ import { TaskBoard } from "@/components/task-board";
 import { PaymentsSection } from "@/components/payments-section";
 import { DocumentsSection } from "@/components/documents-section";
 import { ProjectTimeCard } from "@/components/project-time-card";
+import { MeetingsCard } from "@/components/meetings-card";
 import { DeleteEntityButton } from "@/components/delete-entity-button";
 import { deleteProject } from "@/lib/actions/projects";
 import { Button } from "@/components/ui/button";
@@ -44,9 +46,11 @@ export default async function ProjectDetailPage({
 }) {
   const session = await requirePermission("projects.view");
   const showMoney = can(session, "finance.view");
+  const showMeetings = can(session, "meetings.view");
+  const canScheduleMeetings = can(session, "meetings.manage");
   const { id } = await params;
 
-  const [project, companies, profiles, driveAccount] = await Promise.all([
+  const [project, companies, profiles, driveAccount, meetings, openProjects] = await Promise.all([
     prisma.project.findUnique({
       where: { id },
       include: {
@@ -72,6 +76,19 @@ export default async function ProjectDetailPage({
       orderBy: { created_at: "asc" },
     }),
     getConnectedAccount(),
+    showMeetings
+      ? prisma.meeting.findMany({
+          where: { project_id: id },
+          select: MEETING_LIST_SELECT,
+        })
+      : [],
+    canScheduleMeetings
+      ? prisma.project.findMany({
+          where: { status: { not: "archived" } },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      : [],
   ]);
 
   if (!project) notFound();
@@ -238,6 +255,27 @@ export default async function ProjectDetailPage({
             milestones={milestones}
             budget={serializedProject.budget}
             today={istToday()}
+          />
+        )}
+
+        {showMeetings && (
+          <MeetingsCard
+            meetings={meetings.map(toMeetingListItem)}
+            today={istToday()}
+            form={
+              canScheduleMeetings
+                ? {
+                    companies,
+                    // An archived project can still be the default here.
+                    projects: openProjects.some((p) => p.id === project.id)
+                      ? openProjects
+                      : [{ id: project.id, name: project.name }, ...openProjects],
+                    people: assignees,
+                    defaultCompanyId: project.company_id ?? undefined,
+                    defaultProjectId: project.id,
+                  }
+                : undefined
+            }
           />
         )}
 

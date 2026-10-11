@@ -91,7 +91,7 @@ src/
   app/
     (app)/            Protected app shell + module pages
       page.tsx        Dashboard
-      crm/ pipeline/ projects/ tasks/ social/ team/
+      crm/ pipeline/ projects/ tasks/ meetings/ social/ team/
       employees/ roles/   Admin-only management
     login/            Email + password sign-in
     auth/callback/    OAuth callback (ready for future social login)
@@ -99,7 +99,7 @@ src/
   lib/
     prisma.ts         Prisma client singleton (data access)
     supabase/         Browser / server / proxy / admin (service-role) clients
-    actions/          Server actions (auth, admin, crm, projects, social)
+    actions/          Server actions (auth, admin, crm, projects, meetings, social, …)
     auth.ts           Session + admin guards
     types.ts          Domain types + display labels
 prisma/
@@ -139,6 +139,7 @@ supabase/setup.sql         Auth triggers (create/delete), updated_at, Data API l
 
 ## Roadmap
 
+- [x] **Meetings:** schedule internal, client, standup and review meetings with attendees, a call link and an agenda, optionally tied to a client and project. Notes and decisions are written in place on the meeting page. **Action items are ordinary tasks** (`Task.meeting_id`), so they appear on the task boards and in each person's "My tasks this week"; deleting a meeting keeps them. Meetings show on client and project pages, and a "Today's meetings" card sits on the dashboard. New permissions `meetings.view` / `meetings.manage` — after deploying, run `npm run db:push`, `npm run db:setup` and `npm run db:seed` (refreshes the template roles), and tick the new permissions on any custom roles.
 - [x] **Phase 1 — Foundation + Access Control:** scaffold, password auth, admin-only Employees & Roles, RLS, app shell, dashboard, team
 - [x] **Phase 2 — CRM Core:** companies/contacts CRUD, project-inquiries Kanban (drag-and-drop)
 - [x] **Phase 10 — Renewals + dashboard:** projects carry **domain** and **hosting expiry** dates, surfaced on the project page and on a dashboard **Renewals due** card (30-day window, archived projects excluded) so a client's site can't quietly go dark. The dashboard is now four actionable cards — my tasks this week, renewals, follow-ups and money outstanding — instead of counts alone.

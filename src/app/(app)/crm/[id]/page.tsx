@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requirePermission } from "@/lib/auth";
+import { can, requirePermission } from "@/lib/auth";
 import { PROJECT_TYPES, PROJECT_PHASES } from "@/lib/types";
 import type { Contact, DocumentRecord } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
@@ -10,6 +10,9 @@ import { ContactsSection } from "@/components/contacts-section";
 import { DocumentsSection } from "@/components/documents-section";
 import { DeleteEntityButton } from "@/components/delete-entity-button";
 import { getConnectedAccount } from "@/lib/google/drive";
+import { istToday } from "@/lib/format";
+import { MEETING_LIST_SELECT, toMeetingListItem } from "@/lib/meetings";
+import { MeetingsCard } from "@/components/meetings-card";
 import { SUPABASE_MAX_BYTES } from "@/lib/google/config";
 import { deleteCompany } from "@/lib/actions/crm";
 import { Button } from "@/components/ui/button";
@@ -28,10 +31,12 @@ export default async function CompanyDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requirePermission("clients.view");
+  const session = await requirePermission("clients.view");
+  const showMeetings = can(session, "meetings.view");
+  const canScheduleMeetings = can(session, "meetings.manage");
   const { id } = await params;
 
-  const [company, profiles, driveAccount] = await Promise.all([
+  const [company, profiles, driveAccount, meetings, allCompanies, openProjects] = await Promise.all([
     prisma.company.findUnique({
       where: { id },
       include: {
@@ -40,8 +45,29 @@ export default async function CompanyDetailPage({
         documents: { orderBy: { created_at: "desc" } },
       },
     }),
-    prisma.profile.findMany({ select: { id: true, full_name: true, email: true } }),
+    prisma.profile.findMany({
+      select: { id: true, full_name: true, email: true, is_active: true },
+    }),
     getConnectedAccount(),
+    showMeetings
+      ? prisma.meeting.findMany({
+          where: { company_id: id },
+          select: MEETING_LIST_SELECT,
+        })
+      : [],
+    canScheduleMeetings
+      ? prisma.company.findMany({
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      : [],
+    canScheduleMeetings
+      ? prisma.project.findMany({
+          where: { status: { not: "archived" } },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      : [],
   ]);
 
   if (!company) notFound();
@@ -122,6 +148,25 @@ export default async function CompanyDetailPage({
             driveConnected={!!driveAccount}
             supabaseMaxBytes={SUPABASE_MAX_BYTES}
           />
+
+          {showMeetings && (
+            <MeetingsCard
+              meetings={meetings.map(toMeetingListItem)}
+              today={istToday()}
+              form={
+                canScheduleMeetings
+                  ? {
+                      companies: allCompanies,
+                      projects: openProjects,
+                      people: profiles
+                        .filter((p) => p.is_active)
+                        .map((p) => ({ id: p.id, name: uploaderNames[p.id] })),
+                      defaultCompanyId: company.id,
+                    }
+                  : undefined
+              }
+            />
+          )}
 
           <Card>
             <CardHeader>
