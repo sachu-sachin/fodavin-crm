@@ -118,7 +118,14 @@ supabase/setup.sql         Auth triggers (create/delete), updated_at, Data API l
 | `npm run db:seed` | Seed default roles |
 | `npm run db:studio` | Open Prisma Studio |
 
-## Deploy to Vercel
+## Deploy
+
+**Production runs on a VPS** with the database in Supabase Mumbai — setup,
+deploying updates and rollback are in [docs/deploy-vps.md](docs/deploy-vps.md).
+The Vercel steps below are kept for reference only; Vercel was retired on
+2026-10-11.
+
+### Deploy to Vercel (retired)
 
 1. Push this repo to GitHub, then **Import Project** in Vercel (framework auto-detected as Next.js).
 2. Add the following **Environment Variables** (Project → Settings → Environment Variables), for Production and Preview:
