@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { toast } from "sonner";
 import { markAnnouncementRead } from "@/lib/actions/announcements";
 import { Button } from "@/components/ui/button";
 
@@ -18,7 +19,14 @@ export function MarkReadButton({
       size="sm"
       variant={acknowledge ? "default" : "outline"}
       disabled={pending}
-      onClick={() => startTransition(() => markAnnouncementRead(id))}
+      onClick={() =>
+        startTransition(async () => {
+          // On success the page re-renders without this button; only a
+          // refusal (expired, retargeted or deleted meanwhile) needs a word.
+          const res = await markAnnouncementRead(id);
+          if (res.error) toast.error(res.error);
+        })
+      }
     >
       {pending ? "Saving…" : acknowledge ? "I've read this" : "Mark as read"}
     </Button>

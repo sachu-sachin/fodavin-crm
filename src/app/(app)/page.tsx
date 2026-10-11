@@ -36,6 +36,10 @@ export default async function DashboardPage() {
     `${addDays(today, RENEWAL_WINDOW_DAYS)}T23:59:59+05:30`,
   );
   const weekAhead = new Date(`${addDays(today, 7)}T23:59:59+05:30`);
+  const unreadWhere = {
+    ...liveForRoleWhere(session.profile?.role_id ?? null, new Date()),
+    reads: { none: { profile_id: session.userId } },
+  };
 
   const [
     companies,
@@ -49,6 +53,7 @@ export default async function DashboardPage() {
     myTasks,
     todaysMeetings,
     unreadAnnouncements,
+    unreadAnnouncementCount,
   ] = await Promise.all([
     prisma.company.count(),
     prisma.inquiry.count({ where: { stage: { notIn: ["won", "lost"] } } }),
@@ -136,14 +141,13 @@ export default async function DashboardPage() {
       : [],
     // Everyone sees this one: announcements have no view permission.
     prisma.announcement.findMany({
-      where: {
-        ...liveForRoleWhere(session.profile?.role_id ?? null, new Date()),
-        reads: { none: { profile_id: session.userId } },
-      },
+      where: unreadWhere,
       select: { id: true, title: true, category: true, requires_ack: true },
       orderBy: [{ pinned: "desc" }, { publish_at: "desc" }],
       take: 5,
     }),
+    // The card lists 5 but counts them all.
+    prisma.announcement.count({ where: unreadWhere }),
   ]);
 
   const outstanding = Number(outstandingTotal._sum.amount ?? 0);
@@ -220,7 +224,7 @@ export default async function DashboardPage() {
         {unreadAnnouncements.length > 0 && (
         <DashboardCard
           title="Unread announcements"
-          count={unreadAnnouncements.length}
+          count={unreadAnnouncementCount}
           tone="warn"
           empty=""
         >
