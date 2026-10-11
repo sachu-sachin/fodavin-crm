@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { authorize, can, DENIED_MESSAGE } from "@/lib/auth";
+import { authorize, can, getSessionProfile, DENIED_MESSAGE } from "@/lib/auth";
 import type { Permission } from "@/lib/permissions";
 import { purgeDocumentFiles } from "@/lib/document-files";
 import type {
@@ -180,10 +180,15 @@ export async function deleteProject(formData: FormData): Promise<void> {
 function revalidateTask(task: {
   project_id: string | null;
   meeting_id: string | null;
+  onboarding_id: string | null;
 }) {
   revalidatePath("/tasks");
   if (task.project_id) revalidatePath(`/projects/${task.project_id}`);
   if (task.meeting_id) revalidatePath(`/meetings/${task.meeting_id}`);
+  if (task.onboarding_id) {
+    revalidatePath(`/onboarding/${task.onboarding_id}`);
+    revalidatePath("/onboarding");
+  }
 }
 
 export async function createTask(
@@ -195,12 +200,25 @@ export async function createTask(
   const userId = session.userId;
   let projectId = str(formData.get("project_id"));
   const meetingId = str(formData.get("meeting_id"));
+  const onboardingId = str(formData.get("onboarding_id"));
   const title = String(formData.get("title") ?? "").trim();
 
   // A meeting's action item always takes the meeting's project (none for an
   // internal meeting), whatever the form sent, and adding one needs access to
-  // meetings as well as tasks. Every other task must belong to a project.
-  if (meetingId) {
+  // meetings as well as tasks. An onboarding checklist item has no project
+  // and needs onboarding.manage. Every other task must belong to a project.
+  if (onboardingId && meetingId) {
+    return { error: "A task can't be both a meeting action item and a checklist item." };
+  }
+  if (onboardingId) {
+    if (!can(session, "onboarding.manage")) return { error: DENIED_MESSAGE };
+    const onboarding = await prisma.onboarding.findUnique({
+      where: { id: onboardingId },
+      select: { id: true },
+    });
+    if (!onboarding) return { error: "That onboarding no longer exists." };
+    projectId = null;
+  } else if (meetingId) {
     if (!can(session, "meetings.view")) return { error: DENIED_MESSAGE };
     const meeting = await prisma.meeting.findUnique({
       where: { id: meetingId },
@@ -220,6 +238,7 @@ export async function createTask(
     data: {
       project_id: projectId,
       meeting_id: meetingId,
+      onboarding_id: onboardingId,
       title,
       description: str(formData.get("description")),
       type: TASK_TYPE.has(type) ? type : "general",
@@ -230,7 +249,11 @@ export async function createTask(
     },
   });
 
-  revalidateTask({ project_id: projectId, meeting_id: meetingId });
+  revalidateTask({
+    project_id: projectId,
+    meeting_id: meetingId,
+    onboarding_id: onboardingId,
+  });
   return { success: `Task "${title}" added.` };
 }
 
@@ -256,7 +279,7 @@ export async function updateTask(
       assignee_id: str(formData.get("assignee_id")),
       due_date: parseDate(formData.get("due_date")),
     },
-    select: { project_id: true, meeting_id: true },
+    select: { project_id: true, meeting_id: true, onboarding_id: true },
   });
 
   revalidateTask(task);
@@ -268,7 +291,7 @@ export async function deleteTask(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const task = await prisma.task.delete({
     where: { id },
-    select: { project_id: true, meeting_id: true },
+    select: { project_id: true, meeting_id: true, onboarding_id: true },
   });
   revalidateTask(task);
 }
@@ -278,12 +301,22 @@ export async function moveTaskStatus(
   id: string,
   status: TaskStatus,
 ): Promise<void> {
-  if (!(await requireUserId("tasks.manage"))) return;
+  const session = await getSessionProfile();
+  if (!session) redirect("/login");
   if (!TASK_STATUS.has(status)) return;
+  if (!can(session, "tasks.manage")) {
+    // Without tasks.manage, someone may still tick off their own onboarding
+    // checklist steps (a new joiner's role often can't manage tasks).
+    const own = await prisma.task.findFirst({
+      where: { id, assignee_id: session.userId, onboarding_id: { not: null } },
+      select: { id: true },
+    });
+    if (!own) return;
+  }
   const task = await prisma.task.update({
     where: { id },
     data: { status },
-    select: { project_id: true, meeting_id: true },
+    select: { project_id: true, meeting_id: true, onboarding_id: true },
   });
   revalidateTask(task);
 }

@@ -19,6 +19,9 @@ export default async function globalTeardown() {
     // Cascades attendees; any action items were already swept above by title.
     await prisma.meeting.deleteMany({ where: { title: { startsWith: E2E_PREFIX } } });
     await prisma.announcement.deleteMany({ where: { title: { startsWith: E2E_PREFIX } } });
+    // An onboarding cascades its checklist tasks; then the templates.
+    await prisma.onboarding.deleteMany({ where: { template: { name: { startsWith: E2E_PREFIX } } } });
+    await prisma.onboardingTemplate.deleteMany({ where: { name: { startsWith: E2E_PREFIX } } });
     await prisma.inquiry.deleteMany({ where: { title: { startsWith: E2E_PREFIX } } });
     // Cascades to that project's own tasks/milestones/documents/time entries.
     await prisma.project.deleteMany({ where: { name: { startsWith: E2E_PREFIX } } });

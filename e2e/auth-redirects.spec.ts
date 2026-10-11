@@ -18,6 +18,8 @@ const PROTECTED_ROUTES = [
   "/timesheet",
   "/social",
   "/team",
+  "/onboarding",
+  "/onboarding/templates",
   "/employees",
   "/roles",
   "/settings",

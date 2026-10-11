@@ -9,7 +9,7 @@ import { deleteMeeting } from "@/lib/actions/meetings";
 import { PageHeader } from "@/components/page-header";
 import { MeetingFormDialog } from "@/components/meeting-form-dialog";
 import { MeetingNotesEditor } from "@/components/meeting-notes-editor";
-import { ActionItemsSection } from "@/components/action-items-section";
+import { TaskChecklist } from "@/components/task-checklist";
 import { DeleteEntityButton } from "@/components/delete-entity-button";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -159,8 +159,11 @@ export default async function MeetingDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <ActionItemsSection
-            meetingId={meeting.id}
+          <TaskChecklist
+            parent={{ meetingId: meeting.id }}
+            heading="Action items"
+            addLabel="Add action item"
+            emptyHint="Add one for each follow-up, with an owner and a due date."
             items={actionItems}
             assignees={people}
             today={istToday()}

@@ -13,6 +13,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth", () => ({
   authorize: vi.fn(),
+  getSessionProfile: vi.fn(),
   can: vi.fn(),
   DENIED_MESSAGE: "You don't have permission to do that.",
 }));
@@ -21,13 +22,14 @@ vi.mock("@/lib/document-files", () => ({ purgeDocumentFiles: vi.fn() }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    task: { create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    task: { create: vi.fn(), update: vi.fn(), delete: vi.fn(), findFirst: vi.fn() },
     meeting: { findUnique: vi.fn() },
+    onboarding: { findUnique: vi.fn() },
   },
 }));
 
 const { revalidatePath } = await import("next/cache");
-const { authorize, can, DENIED_MESSAGE } = await import("@/lib/auth");
+const { authorize, getSessionProfile, can, DENIED_MESSAGE } = await import("@/lib/auth");
 const { prisma } = await import("@/lib/prisma");
 const { createTask, updateTask, deleteTask, moveTaskStatus } = await import("./projects");
 
@@ -39,13 +41,17 @@ function form(fields: Record<string, string>): FormData {
 
 /** Signed in with tasks.manage, plus `extra` permissions (meetings.view by default). */
 function authorized(userId = "user-1", extra: string[] = ["meetings.view"]) {
-  const permissions = new Set(["tasks.manage", ...extra]);
-  vi.mocked(authorize).mockResolvedValue({
-    userId,
-    profile: null,
-    isAdmin: false,
-    permissions,
-  } as never);
+  signedIn(userId, ["tasks.manage", ...extra]);
+}
+
+/** Signed in with exactly these permissions. */
+function signedIn(userId: string, perms: string[]) {
+  const permissions = new Set(perms);
+  const session = { userId, profile: null, isAdmin: false, permissions };
+  vi.mocked(authorize).mockImplementation(async (p) =>
+    permissions.has(p) ? (session as never) : null,
+  );
+  vi.mocked(getSessionProfile).mockResolvedValue(session as never);
   vi.mocked(can).mockImplementation((_s, p) => permissions.has(p));
 }
 
@@ -116,6 +122,46 @@ describe("createTask", () => {
     });
   });
 
+  it("adds an item to an onboarding checklist, with no project", async () => {
+    authorized("user-1", ["onboarding.manage"]);
+    vi.mocked(prisma.onboarding.findUnique).mockResolvedValue({ id: "o1" } as never);
+    const result = await createTask(
+      {},
+      form({ onboarding_id: "o1", project_id: "sneaky", title: "Order business cards" }),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(prisma.meeting.findUnique).not.toHaveBeenCalled();
+    expect(vi.mocked(prisma.task.create).mock.calls[0][0].data).toMatchObject({
+      project_id: null,
+      onboarding_id: "o1",
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/onboarding/o1");
+  });
+
+  it("denies a checklist item without onboarding.manage", async () => {
+    authorized("user-1", []);
+    const result = await createTask({}, form({ onboarding_id: "o1", title: "X" }));
+    expect(result).toEqual({ error: DENIED_MESSAGE });
+    expect(prisma.onboarding.findUnique).not.toHaveBeenCalled();
+    expect(prisma.task.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a task that claims to be both an action item and a checklist item", async () => {
+    authorized("user-1", ["meetings.view", "onboarding.manage"]);
+    const result = await createTask({}, form({ onboarding_id: "o1", meeting_id: "m1", title: "X" }));
+    expect(result.error).toMatch(/both/i);
+    expect(prisma.task.create).not.toHaveBeenCalled();
+  });
+
+  it("errors when the onboarding no longer exists", async () => {
+    authorized("user-1", ["onboarding.manage"]);
+    vi.mocked(prisma.onboarding.findUnique).mockResolvedValue(null);
+    const result = await createTask({}, form({ onboarding_id: "gone", title: "X" }));
+    expect(result.error).toMatch(/no longer exists/i);
+    expect(prisma.task.create).not.toHaveBeenCalled();
+  });
+
   it("uses the meeting's project even if the form sends another one", async () => {
     authorized();
     vi.mocked(prisma.meeting.findUnique).mockResolvedValue({ project_id: "p9" } as never);
@@ -157,6 +203,7 @@ describe("task updates refresh the task's own meeting and project pages", () => 
     expect(vi.mocked(prisma.task.update).mock.calls[0][0].select).toEqual({
       project_id: true,
       meeting_id: true,
+      onboarding_id: true,
     });
     expect(revalidatePath).toHaveBeenCalledWith("/projects/p1");
     expect(revalidatePath).toHaveBeenCalledWith("/meetings/m1");
@@ -166,7 +213,7 @@ describe("task updates refresh the task's own meeting and project pages", () => 
     await deleteTask(form({ id: "t1" }));
     expect(prisma.task.delete).toHaveBeenCalledWith({
       where: { id: "t1" },
-      select: { project_id: true, meeting_id: true },
+      select: { project_id: true, meeting_id: true, onboarding_id: true },
     });
     expect(revalidatePath).toHaveBeenCalledWith("/meetings/m1");
   });
@@ -176,13 +223,40 @@ describe("task updates refresh the task's own meeting and project pages", () => 
     expect(prisma.task.update).toHaveBeenCalledWith({
       where: { id: "t1" },
       data: { status: "done" },
-      select: { project_id: true, meeting_id: true },
+      select: { project_id: true, meeting_id: true, onboarding_id: true },
     });
     expect(revalidatePath).toHaveBeenCalledWith("/meetings/m1");
   });
 
   it("moveTaskStatus ignores an unknown status", async () => {
     await moveTaskStatus("t1", "archived" as never);
+    expect(prisma.task.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("moveTaskStatus without tasks.manage", () => {
+  it("lets someone tick off their own onboarding checklist step", async () => {
+    signedIn("new-hire", []);
+    vi.mocked(prisma.task.findFirst).mockResolvedValue({ id: "t1" } as never);
+    vi.mocked(prisma.task.update).mockResolvedValue({
+      project_id: null,
+      meeting_id: null,
+      onboarding_id: "o1",
+    } as never);
+
+    await moveTaskStatus("t1", "done");
+    expect(prisma.task.findFirst).toHaveBeenCalledWith({
+      where: { id: "t1", assignee_id: "new-hire", onboarding_id: { not: null } },
+      select: { id: true },
+    });
+    expect(prisma.task.update).toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledWith("/onboarding/o1");
+  });
+
+  it("does nothing for any other task", async () => {
+    signedIn("new-hire", []);
+    vi.mocked(prisma.task.findFirst).mockResolvedValue(null);
+    await moveTaskStatus("t1", "done");
     expect(prisma.task.update).not.toHaveBeenCalled();
   });
 });

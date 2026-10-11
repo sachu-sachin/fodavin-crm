@@ -16,6 +16,9 @@ export default async function TasksPage() {
       include: {
         project: { select: { name: true } },
         meeting: { select: { title: true } },
+        onboarding: {
+          select: { profile: { select: { full_name: true, email: true } } },
+        },
       },
       orderBy: { created_at: "asc" },
     }),
@@ -35,10 +38,13 @@ export default async function TasksPage() {
     name: p.full_name || p.email?.split("@")[0] || "User",
   }));
 
-  const tasks: BoardTask[] = rawTasks.map(({ project, meeting, ...t }) => ({
+  const tasks: BoardTask[] = rawTasks.map(({ project, meeting, onboarding, ...t }) => ({
     ...t,
     project_name: project?.name ?? null,
     meeting_title: meeting?.title ?? null,
+    onboarding_for: onboarding
+      ? onboarding.profile.full_name || onboarding.profile.email?.split("@")[0] || "User"
+      : null,
     due_date: dateStr(t.due_date),
     created_at: t.created_at.toISOString(),
     updated_at: t.updated_at.toISOString(),
