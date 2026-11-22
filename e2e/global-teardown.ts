@@ -28,6 +28,19 @@ export default async function globalTeardown() {
     await prisma.contact.deleteMany({ where: { full_name: { startsWith: E2E_PREFIX } } });
     await prisma.company.deleteMany({ where: { name: { startsWith: E2E_PREFIX } } });
     await prisma.role.deleteMany({ where: { name: { startsWith: E2E_PREFIX } } });
+    await prisma.holiday.deleteMany({ where: { name: { startsWith: E2E_PREFIX } } });
+
+    // The fixture admin's own attendance and leave only ever come from the
+    // attendance spec (this is the test project), and today's check-in must
+    // be gone before the next run or "Check in" won't be offered again.
+    const fixture = await prisma.profile.findFirst({
+      where: { email: process.env.TEST_ADMIN_EMAIL },
+      select: { id: true },
+    });
+    if (fixture) {
+      await prisma.attendance.deleteMany({ where: { profile_id: fixture.id } });
+      await prisma.leaveRequest.deleteMany({ where: { profile_id: fixture.id } });
+    }
 
     // Employees are Supabase Auth users first, profiles second (a DB trigger
     // creates/deletes the profile in step with the auth user). Deleting the

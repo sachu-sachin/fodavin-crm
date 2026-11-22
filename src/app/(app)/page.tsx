@@ -15,6 +15,8 @@ import { liveForRoleWhere } from "@/lib/announcements";
 import { PageHeader } from "@/components/page-header";
 import { DashboardCard, DashboardRow } from "@/components/dashboard-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CheckInCard } from "@/components/attendance-forms";
+import { STATUS_META } from "@/lib/attendance";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +57,7 @@ export default async function DashboardPage() {
     unreadAnnouncements,
     unreadAnnouncementCount,
     myOnboarding,
+    myAttendanceToday,
   ] = await Promise.all([
     prisma.company.count(),
     prisma.inquiry.count({ where: { stage: { notIn: ["won", "lost"] } } }),
@@ -161,6 +164,15 @@ export default async function DashboardPage() {
         },
       },
     }),
+    prisma.attendance.findUnique({
+      where: {
+        profile_id_work_date: {
+          profile_id: session.userId,
+          work_date: new Date(`${today}T00:00:00Z`),
+        },
+      },
+      select: { check_in: true, check_out: true, status: true },
+    }),
   ]);
 
   const onboardingOpen = myOnboarding?.tasks.filter((t) => t.status !== "done") ?? [];
@@ -217,6 +229,24 @@ export default async function DashboardPage() {
         title="Dashboard"
         description="What needs attention today, across clients, money and delivery."
       />
+
+      <div className="mb-6">
+        <CheckInCard
+          checkInLabel={
+            myAttendanceToday?.check_in
+              ? formatTimeIST(myAttendanceToday.check_in.toISOString())
+              : null
+          }
+          checkOutLabel={
+            myAttendanceToday?.check_out
+              ? formatTimeIST(myAttendanceToday.check_out.toISOString())
+              : null
+          }
+          statusLabel={
+            myAttendanceToday?.status ? STATUS_META[myAttendanceToday.status].label : null
+          }
+        />
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (

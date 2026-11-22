@@ -172,6 +172,8 @@ one move away.
    ```bash
    npx tsc src/lib/permissions.ts --outDir .seed-build --module es2022 --target es2022 --moduleResolution bundler --skipLibCheck
    node --env-file=.env.local scripts/add-missing-roles.mjs   # prints the project ref first
+   # new permissions for existing template roles, add-only:
+   node --env-file=.env.local scripts/add-missing-roles.mjs --grant attendance.manage_team,attendance.view_all
    ```
 5. **Switch** (a few seconds of downtime):
    ```bash

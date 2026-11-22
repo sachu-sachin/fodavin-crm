@@ -10,6 +10,7 @@ import { expect, test } from "@playwright/test";
 const PROTECTED_ROUTES = [
   "/",
   "/announcements",
+  "/attendance",
   "/crm",
   "/pipeline",
   "/projects",
