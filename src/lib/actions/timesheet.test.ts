@@ -12,6 +12,10 @@ vi.mock("@/lib/auth", () => ({
   can: vi.fn(),
   DENIED_MESSAGE: "You don't have permission to do that.",
   getSessionProfile: vi.fn(),
+  // The real rule: off for anyone with a managing lead.
+  timesheetOff: (s: { profile?: { reports_to_id?: string | null } | null } | null) =>
+    !!s?.profile?.reports_to_id,
+  TIMESHEET_OFF_MESSAGE: "Your timesheet is switched off.",
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -55,6 +59,19 @@ describe("saveTimeEntry — auth boundary", () => {
       saveTimeEntry({ projectId: "p1", workDate: "2026-01-05", hours: 1 }),
     ).rejects.toThrow("REDIRECT:/login");
     expect(redirect).toHaveBeenCalledWith("/login");
+    expect(prisma.timeEntry.upsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses your own time once you report to a lead (timesheet switched off)", async () => {
+    vi.mocked(getSessionProfile).mockResolvedValue({
+      userId: "user-1",
+      profile: { reports_to_id: "lead-1" },
+      isAdmin: false,
+      permissions: new Set(),
+    } as never);
+    vi.mocked(can).mockReturnValue(true);
+    const result = await saveTimeEntry({ projectId: "p1", workDate: "2026-01-05", hours: 1 });
+    expect(result.error).toMatch(/switched off/);
     expect(prisma.timeEntry.upsert).not.toHaveBeenCalled();
   });
 

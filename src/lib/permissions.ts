@@ -47,6 +47,9 @@ export const PERMISSIONS = [
   "attendance.view_all",
   "attendance.manage_all",
 
+  "reports.view_team",
+  "reports.view_all",
+
   "social.view",
   "social.manage",
 
@@ -248,6 +251,20 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    key: "reports",
+    label: "Daily reports",
+    description:
+      "Morning plans and end-of-day reports. Everyone can write and see their own.",
+    permissions: [
+      {
+        value: "reports.view_team",
+        label: "Review their team's daily reports",
+        hint: "Only the people who report to them. Includes commenting.",
+      },
+      { value: "reports.view_all", label: "Review everyone's daily reports" },
+    ],
+  },
+  {
     key: "social",
     label: "Social & content",
     description: "The content calendar and workflow board.",
@@ -303,6 +320,7 @@ const IMPLIES: Partial<Record<Permission, Permission[]>> = {
   "timesheet.manage_all": ["timesheet.view_all", "timesheet.log"],
   "timesheet.view_all": ["timesheet.log"],
   "attendance.manage_all": ["attendance.view_all", "attendance.manage_team"],
+  "reports.view_all": ["reports.view_team"],
   "social.manage": ["social.view"],
   "employees.manage": ["team.view"],
 };
@@ -359,6 +377,7 @@ export const ROLE_TEMPLATES: {
       "documents.view", "documents.upload", "documents.delete",
       "timesheet.log", "timesheet.view_all", "timesheet.manage_all",
       "attendance.manage_team",
+      "reports.view_team",
       "social.view", "social.manage",
       "team.view",
     ],
@@ -446,6 +465,7 @@ export const ROLE_TEMPLATES: {
       "documents.view", "documents.upload",
       "timesheet.log",
       "attendance.manage_team",
+      "reports.view_team",
       "social.view",
       "team.view",
     ],

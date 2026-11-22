@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { toTaskDTO } from "@/lib/task-dto";
 import { can, requirePermission } from "@/lib/auth";
 import {
   PROJECT_TYPES,
@@ -156,12 +157,7 @@ export default async function ProjectDetailPage({
     updated_at: project.updated_at.toISOString(),
   };
 
-  const tasks: Task[] = project.tasks.map((t) => ({
-    ...t,
-    due_date: dateStr(t.due_date),
-    created_at: t.created_at.toISOString(),
-    updated_at: t.updated_at.toISOString(),
-  }));
+  const tasks: Task[] = project.tasks.map(toTaskDTO);
 
   const milestones: PaymentMilestone[] = project.milestones.map((m) => ({
     ...m,

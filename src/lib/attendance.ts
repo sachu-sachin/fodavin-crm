@@ -113,6 +113,9 @@ export interface WorkRules {
   standardHours: number;
   /** 0 = Sunday … 6 = Saturday */
   weeklyOffs: number[];
+  /** Daily meetings, "HH:mm" IST: morning plan after the first, EOD report after the second. */
+  morningMeeting: string;
+  eodMeeting: string;
 }
 
 /** Defaults from the old workbook's settings sheet. */
@@ -122,6 +125,8 @@ export const DEFAULT_RULES: WorkRules = {
   lateGraceMinutes: 10,
   standardHours: 8,
   weeklyOffs: [0],
+  morningMeeting: "09:30",
+  eodMeeting: "17:30",
 };
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;

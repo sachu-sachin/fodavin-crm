@@ -223,6 +223,14 @@ export interface Task {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  priority: "low" | "medium" | "high" | "urgent";
+  /** e.g. "Meta Ads", "SEO", "Editing". */
+  workstream: string | null;
+  allocated_hours: number | null;
+  actual_hours: number | null;
+  /** ISO instants, stamped as the status moves. */
+  started_at: string | null;
+  completed_at: string | null;
 }
 
 export interface Meeting {

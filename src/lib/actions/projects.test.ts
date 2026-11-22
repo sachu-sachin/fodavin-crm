@@ -22,7 +22,7 @@ vi.mock("@/lib/document-files", () => ({ purgeDocumentFiles: vi.fn() }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    task: { create: vi.fn(), update: vi.fn(), delete: vi.fn(), findFirst: vi.fn() },
+    task: { create: vi.fn(), update: vi.fn(), delete: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
     meeting: { findUnique: vi.fn() },
     onboarding: { findUnique: vi.fn() },
   },
@@ -59,7 +59,16 @@ function unauthorized() {
   vi.mocked(authorize).mockResolvedValue(null);
 }
 
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => {
+  vi.resetAllMocks();
+  // The task as it was before an edit or move (for start/finish stamping).
+  vi.mocked(prisma.task.findUnique).mockResolvedValue({
+    status: "todo",
+    started_at: null,
+    completed_at: null,
+    actual_hours: null,
+  } as never);
+});
 
 describe("createTask", () => {
   it("denies without tasks.manage", async () => {
@@ -69,11 +78,36 @@ describe("createTask", () => {
     expect(prisma.task.create).not.toHaveBeenCalled();
   });
 
-  it("still requires a project for an ordinary task", async () => {
+  it("creates an individual task with no project, with its planning fields", async () => {
     authorized();
-    const result = await createTask({}, form({ title: "X" }));
-    expect(result.error).toMatch(/project/i);
+    const result = await createTask(
+      {},
+      form({ title: "Edit shorts", priority: "high", workstream: "Editing", allocated_hours: "3" }),
+    );
+    expect(result.success).toBeTruthy();
+    expect(prisma.task.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        project_id: null,
+        priority: "high",
+        workstream: "Editing",
+        allocated_hours: 3,
+      }),
+    });
+  });
+
+  it("rejects nonsense hours", async () => {
+    authorized();
+    const result = await createTask({}, form({ title: "X", allocated_hours: "-2" }));
+    expect(result.error).toMatch(/Hours/);
     expect(prisma.task.create).not.toHaveBeenCalled();
+  });
+
+  it("stamps start and finish when created straight as done", async () => {
+    authorized();
+    await createTask({}, form({ title: "X", status: "done" }));
+    const data = vi.mocked(prisma.task.create).mock.calls[0][0].data as { started_at: Date; completed_at: Date };
+    expect(data.started_at).toBeInstanceOf(Date);
+    expect(data.completed_at).toBeInstanceOf(Date);
   });
 
   it("requires a title", async () => {
@@ -222,7 +256,7 @@ describe("task updates refresh the task's own meeting and project pages", () => 
     await moveTaskStatus("t1", "done");
     expect(prisma.task.update).toHaveBeenCalledWith({
       where: { id: "t1" },
-      data: { status: "done" },
+      data: expect.objectContaining({ status: "done", completed_at: expect.any(Date) }),
       select: { project_id: true, meeting_id: true, onboarding_id: true },
     });
     expect(revalidatePath).toHaveBeenCalledWith("/meetings/m1");

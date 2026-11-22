@@ -58,6 +58,8 @@ export default async function DashboardPage() {
     unreadAnnouncementCount,
     myOnboarding,
     myAttendanceToday,
+    myReportsToday,
+    teamReportsToday,
   ] = await Promise.all([
     prisma.company.count(),
     prisma.inquiry.count({ where: { stage: { notIn: ["won", "lost"] } } }),
@@ -173,6 +175,22 @@ export default async function DashboardPage() {
       },
       select: { check_in: true, check_out: true, status: true },
     }),
+    prisma.dailyReport.findMany({
+      where: { profile_id: session.userId, report_date: new Date(`${today}T00:00:00Z`) },
+      select: { kind: true },
+    }),
+    can(session, "reports.view_team")
+      ? prisma.profile.findMany({
+          where: { is_active: true, reports_to_id: session.userId },
+          select: {
+            id: true,
+            daily_reports: {
+              where: { report_date: new Date(`${today}T00:00:00Z`) },
+              select: { kind: true },
+            },
+          },
+        })
+      : [],
   ]);
 
   const onboardingOpen = myOnboarding?.tasks.filter((t) => t.status !== "done") ?? [];
@@ -230,7 +248,38 @@ export default async function DashboardPage() {
         description="What needs attention today, across clients, money and delivery."
       />
 
-      <div className="mb-6">
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Daily reports</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            {(["morning", "eod"] as const).map((kind) => {
+              const done = myReportsToday.some((r) => r.kind === kind);
+              return (
+                <div key={kind} className="flex items-center justify-between">
+                  <span>{kind === "morning" ? "Morning plan" : "End-of-day report"}</span>
+                  {done ? (
+                    <span className="text-muted-foreground">Submitted ✓</span>
+                  ) : (
+                    <Link href="/reports" className="font-medium text-primary hover:underline">
+                      Write it
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
+            {teamReportsToday.length > 0 && (
+              <Link href="/reports?tab=team" className="block pt-1 text-muted-foreground hover:underline">
+                Your team today: morning{" "}
+                {teamReportsToday.filter((p) => p.daily_reports.some((r) => r.kind === "morning")).length}/
+                {teamReportsToday.length}, EOD{" "}
+                {teamReportsToday.filter((p) => p.daily_reports.some((r) => r.kind === "eod")).length}/
+                {teamReportsToday.length}
+              </Link>
+            )}
+          </CardContent>
+        </Card>
         <CheckInCard
           checkInLabel={
             myAttendanceToday?.check_in

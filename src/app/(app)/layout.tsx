@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSessionProfile } from "@/lib/auth";
+import { getSessionProfile, timesheetOff } from "@/lib/auth";
 import { AppSidebar } from "@/components/app-sidebar";
 import { UserMenu } from "@/components/user-menu";
 
@@ -24,7 +24,10 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-svh bg-muted/30">
-      <AppSidebar permissions={[...session.permissions]} />
+      <AppSidebar
+        permissions={[...session.permissions]}
+        hiddenHrefs={timesheetOff(session) ? ["/timesheet"] : []}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center justify-between border-b bg-card px-4 md:px-6">
           <div className="font-semibold md:hidden">Fodavin OS</div>

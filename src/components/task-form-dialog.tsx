@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { createTask, updateTask, deleteTask } from "@/lib/actions/projects";
 import { useGuardedForm } from "@/hooks/use-unsaved-changes-guard";
 import { TASK_TYPES, TASK_STATUSES, type Task, type TaskStatus } from "@/lib/types";
+import { PRIORITY_LABELS, TASK_PRIORITIES } from "@/lib/task-timing";
+import { formatDateTimeIST } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -124,11 +126,8 @@ export function TaskFormDialog({
                 name="project_id"
                 className={selectClass}
                 defaultValue=""
-                required
               >
-                <option value="" disabled>
-                  Select a project…
-                </option>
+                <option value="">— No project (individual task) —</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -198,6 +197,67 @@ export function TaskFormDialog({
               />
             </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="priority">Priority</Label>
+              <select
+                id="priority"
+                name="priority"
+                className={selectClass}
+                defaultValue={task?.priority ?? "medium"}
+              >
+                {TASK_PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {PRIORITY_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="workstream">Workstream</Label>
+              <Input
+                id="workstream"
+                name="workstream"
+                placeholder="e.g. Meta Ads, SEO"
+                defaultValue={task?.workstream ?? ""}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="allocated_hours">Allocated hours</Label>
+              <Input
+                id="allocated_hours"
+                name="allocated_hours"
+                type="number"
+                step="0.25"
+                min={0}
+                defaultValue={task?.allocated_hours ?? ""}
+              />
+            </div>
+            {isEdit && (
+              <div className="space-y-2">
+                <Label htmlFor="actual_hours">Actual hours</Label>
+                <Input
+                  id="actual_hours"
+                  name="actual_hours"
+                  type="number"
+                  step="0.25"
+                  min={0}
+                  defaultValue={task?.actual_hours ?? ""}
+                />
+              </div>
+            )}
+          </div>
+          {isEdit && (task.started_at || task.completed_at) && (
+            <p className="text-xs text-muted-foreground">
+              {task.started_at && <>Started {formatDateTimeIST(task.started_at)}</>}
+              {task.started_at && task.completed_at && " · "}
+              {task.completed_at && <>Finished {formatDateTimeIST(task.completed_at)}</>}
+            </p>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>

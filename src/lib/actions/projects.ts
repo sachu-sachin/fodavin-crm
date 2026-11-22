@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { authorize, can, getSessionProfile, DENIED_MESSAGE } from "@/lib/auth";
 import type { Permission } from "@/lib/permissions";
 import { purgeDocumentFiles } from "@/lib/document-files";
+import { isTaskPriority, timingForStatusChange } from "@/lib/task-timing";
 import type {
   ProjectType,
   ProjectPhase,
@@ -15,6 +16,32 @@ import type {
 } from "@/lib/types";
 
 export type ProjectState = { error?: string; success?: string };
+
+/** Hours field: blank is null; anything else must be 0–999. */
+function hoursField(v: FormDataEntryValue | null): number | null | "invalid" {
+  const raw = String(v ?? "").trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 && n < 1000 ? Math.round(n * 100) / 100 : "invalid";
+}
+
+/** The planning fields shared by create and edit. */
+function taskPlanning(formData: FormData) {
+  const priority = String(formData.get("priority") ?? "medium");
+  const allocated = hoursField(formData.get("allocated_hours"));
+  const actual = hoursField(formData.get("actual_hours"));
+  if (allocated === "invalid" || actual === "invalid") {
+    return { error: "Hours must be a number between 0 and 999." } as const;
+  }
+  return {
+    data: {
+      priority: isTaskPriority(priority) ? priority : "medium",
+      workstream: String(formData.get("workstream") ?? "").trim() || null,
+      allocated_hours: allocated,
+      ...(formData.has("actual_hours") ? { actual_hours: actual } : {}),
+    },
+  } as const;
+}
 
 async function requireUserId(
   permission: Permission,
@@ -206,7 +233,8 @@ export async function createTask(
   // A meeting's action item always takes the meeting's project (none for an
   // internal meeting), whatever the form sent, and adding one needs access to
   // meetings as well as tasks. An onboarding checklist item has no project
-  // and needs onboarding.manage. Every other task must belong to a project.
+  // and needs onboarding.manage. Any other task may belong to a project or
+  // be an individual task with none.
   if (onboardingId && meetingId) {
     return { error: "A task can't be both a meeting action item and a checklist item." };
   }
@@ -226,13 +254,15 @@ export async function createTask(
     });
     if (!meeting) return { error: "That meeting no longer exists." };
     projectId = meeting.project_id;
-  } else if (!projectId) {
-    return { error: "Pick a project." };
   }
   if (!title) return { error: "Task title is required." };
 
   const type = String(formData.get("type") ?? "general") as TaskType;
   const status = String(formData.get("status") ?? "todo") as TaskStatus;
+  const planning = taskPlanning(formData);
+  if ("error" in planning) return { error: planning.error };
+  const safeStatus = TASK_STATUS.has(status) ? status : "todo";
+  const now = new Date();
 
   await prisma.task.create({
     data: {
@@ -242,10 +272,16 @@ export async function createTask(
       title,
       description: str(formData.get("description")),
       type: TASK_TYPE.has(type) ? type : "general",
-      status: TASK_STATUS.has(status) ? status : "todo",
+      status: safeStatus,
       assignee_id: str(formData.get("assignee_id")),
       due_date: parseDate(formData.get("due_date")),
       created_by: userId,
+      ...planning.data,
+      ...timingForStatusChange(
+        { status: "todo", started_at: null, completed_at: null, actual_hours: planning.data.actual_hours ?? null },
+        safeStatus,
+        now,
+      ),
     },
   });
 
@@ -268,6 +304,21 @@ export async function updateTask(
 
   const type = String(formData.get("type") ?? "general") as TaskType;
   const status = String(formData.get("status") ?? "todo") as TaskStatus;
+  const planning = taskPlanning(formData);
+  if ("error" in planning) return { error: planning.error };
+  const safeStatus = TASK_STATUS.has(status) ? status : "todo";
+
+  const before = await prisma.task.findUnique({
+    where: { id },
+    select: { status: true, started_at: true, completed_at: true, actual_hours: true },
+  });
+  if (!before) return { error: "That task no longer exists." };
+  const actualBefore =
+    "actual_hours" in planning.data
+      ? (planning.data.actual_hours ?? null)
+      : before.actual_hours == null
+        ? null
+        : Number(before.actual_hours);
 
   const task = await prisma.task.update({
     where: { id },
@@ -275,9 +326,15 @@ export async function updateTask(
       title,
       description: str(formData.get("description")),
       type: TASK_TYPE.has(type) ? type : "general",
-      status: TASK_STATUS.has(status) ? status : "todo",
+      status: safeStatus,
       assignee_id: str(formData.get("assignee_id")),
       due_date: parseDate(formData.get("due_date")),
+      ...planning.data,
+      ...timingForStatusChange(
+        { ...before, actual_hours: actualBefore },
+        safeStatus,
+        new Date(),
+      ),
     },
     select: { project_id: true, meeting_id: true, onboarding_id: true },
   });
@@ -313,10 +370,26 @@ export async function moveTaskStatus(
     });
     if (!own) return;
   }
+  const before = await prisma.task.findUnique({
+    where: { id },
+    select: { status: true, started_at: true, completed_at: true, actual_hours: true },
+  });
+  if (!before) return;
   const task = await prisma.task.update({
     where: { id },
-    data: { status },
+    data: {
+      status,
+      ...timingForStatusChange(
+        {
+          ...before,
+          actual_hours: before.actual_hours == null ? null : Number(before.actual_hours),
+        },
+        status,
+        new Date(),
+      ),
+    },
     select: { project_id: true, meeting_id: true, onboarding_id: true },
   });
   revalidateTask(task);
+  revalidatePath("/reports");
 }

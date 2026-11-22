@@ -127,9 +127,26 @@ export function TaskBoard({
                           </p>
                         )}
                         <div className="mt-2 flex items-center justify-between gap-2">
-                          <Badge variant="secondary" className="text-[10px]">
-                            {TYPE_LABEL[task.type]}
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Badge variant="secondary" className="text-[10px]">
+                              {TYPE_LABEL[task.type]}
+                            </Badge>
+                            {(task.priority === "high" || task.priority === "urgent") && (
+                              <Badge
+                                variant={task.priority === "urgent" ? "destructive" : "outline"}
+                                className="text-[10px]"
+                              >
+                                {task.priority === "urgent" ? "Urgent" : "High"}
+                              </Badge>
+                            )}
+                            {task.allocated_hours != null && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {task.actual_hours != null
+                                  ? `${task.actual_hours}/${task.allocated_hours} h`
+                                  : `${task.allocated_hours} h`}
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2">
                             {due && (
                               <span

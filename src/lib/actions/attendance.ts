@@ -286,6 +286,8 @@ export async function saveWorkSettings(
   if (!(await authorize("attendance.manage_all"))) return { error: DENIED_MESSAGE };
   const shiftStart = String(formData.get("shift_start") ?? "");
   const shiftEnd = String(formData.get("shift_end") ?? "");
+  const morning = String(formData.get("morning_meeting") ?? "") || "09:30";
+  const eod = String(formData.get("eod_meeting") ?? "") || "17:30";
   const grace = Number(formData.get("late_grace_minutes"));
   const hours = Number(formData.get("standard_hours"));
   const offs = [
@@ -297,7 +299,9 @@ export async function saveWorkSettings(
     ),
   ].sort();
 
-  if (!isHHmm(shiftStart) || !isHHmm(shiftEnd)) return { error: "Times must be like 09:30." };
+  if (![shiftStart, shiftEnd, morning, eod].every(isHHmm)) {
+    return { error: "Times must be like 09:30." };
+  }
   if (hhmmToMinutes(shiftEnd) <= hhmmToMinutes(shiftStart)) {
     return { error: "The day must end after it starts." };
   }
@@ -314,6 +318,8 @@ export async function saveWorkSettings(
     late_grace_minutes: grace,
     standard_hours: hours,
     weekly_offs: offs,
+    morning_meeting: morning,
+    eod_meeting: eod,
   };
   await prisma.workSettings.upsert({
     where: { singleton: true },
