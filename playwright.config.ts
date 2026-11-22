@@ -35,6 +35,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: [["html", { open: "never" }], ["list"]],
+  // The dev server compiles each page on its first visit, which under a full
+  // run can take longer than the 5s default; 15s keeps a slow first compile
+  // from reading as a failure, while a real failure still fails.
+  expect: { timeout: 15_000 },
+  timeout: 60_000,
   globalSetup: "./e2e/global-setup.ts",
   globalTeardown: "./e2e/global-teardown.ts",
   use: {
