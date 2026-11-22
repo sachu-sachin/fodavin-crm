@@ -42,11 +42,14 @@ export function InquiryFormDialog({
   companies,
   contacts,
   inquiry,
+  owners = [],
   trigger,
   nativeTrigger = true,
 }: {
   companies: { id: string; name: string }[];
   contacts: InquiryContact[];
+  /** People who can own a lead; empty hides the owner field. */
+  owners?: { id: string; name: string }[];
   inquiry?: Inquiry;
   trigger: React.ReactElement;
   nativeTrigger?: boolean;
@@ -76,7 +79,7 @@ export function InquiryFormDialog({
   const contactOptions = companyId
     ? contacts.filter((c) => c.company_id === companyId)
     : contacts;
-  const isClosed = stage === "won" || stage === "lost";
+  const isClosed = stage === "won" || stage === "lost" || stage === "not_interested";
 
   function onAction(formData: FormData) {
     startTransition(async () => {
@@ -118,7 +121,7 @@ export function InquiryFormDialog({
     // See company-form-dialog.tsx for why this is keyed by updated_at.
     <Dialog key={inquiry?.updated_at ?? "new"} open={open} onOpenChange={setOpen}>
       <DialogTrigger nativeButton={nativeTrigger} render={trigger} />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit inquiry" : "New inquiry"}</DialogTitle>
         </DialogHeader>
@@ -223,6 +226,34 @@ export function InquiryFormDialog({
               />
             )}
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone</Label>
+              <Input id="phone" name="phone" type="tel" defaultValue={inquiry?.phone ?? ""} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="lead_email">Email</Label>
+              <Input id="lead_email" name="email" type="email" defaultValue={inquiry?.email ?? ""} />
+            </div>
+          </div>
+          {owners.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="owner_id">Owner</Label>
+              <select
+                id="owner_id"
+                name="owner_id"
+                className={selectClass}
+                defaultValue={inquiry ? (inquiry.owner_id ?? "") : ""}
+              >
+                <option value="">{isEdit ? "— Unassigned —" : "— Me —"}</option>
+                {owners.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {isEdit && (
             <div className="space-y-2">
               <Label htmlFor="stage">Stage</Label>

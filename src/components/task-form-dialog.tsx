@@ -84,7 +84,7 @@ export function TaskFormDialog({
     // See company-form-dialog.tsx for why this is keyed by updated_at.
     <Dialog key={task?.updated_at ?? "new"} open={open} onOpenChange={setOpen}>
       <DialogTrigger nativeButton={nativeTrigger} render={trigger} />
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {isEdit

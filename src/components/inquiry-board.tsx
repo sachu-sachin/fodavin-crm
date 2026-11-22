@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { moveInquiryStage } from "@/lib/actions/crm";
 import {
   INQUIRY_STAGES,
@@ -24,11 +25,13 @@ export function InquiryBoard({
   inquiries,
   companies,
   contacts,
+  owners = [],
   today,
 }: {
   inquiries: Inquiry[];
   companies: { id: string; name: string }[];
   contacts: InquiryContact[];
+  owners?: { id: string; name: string }[];
   /** Today's IST date key, resolved on the server so SSR and client agree. */
   today: string;
 }) {
@@ -44,6 +47,7 @@ export function InquiryBoard({
     setItems(inquiries);
   }
 
+  const ownerName = (id: string) => owners.find((o) => o.id === id)?.name ?? "Former employee";
   const companyName = (id: string | null) =>
     id ? companies.find((c) => c.id === id)?.name : null;
 
@@ -94,6 +98,7 @@ export function InquiryBoard({
                   key={inquiry.id}
                   companies={companies}
                   contacts={contacts}
+                  owners={owners}
                   inquiry={inquiry}
                   nativeTrigger={false}
                   trigger={
@@ -119,6 +124,18 @@ export function InquiryBoard({
                             {formatINR(inquiry.budget)}
                           </span>
                         )}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+                        <span className="truncate text-muted-foreground">
+                          {inquiry.owner_id ? ownerName(inquiry.owner_id) : "Unassigned"}
+                        </span>
+                        <Link
+                          href={`/pipeline/${inquiry.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="shrink-0 font-medium text-primary hover:underline"
+                        >
+                          Calls →
+                        </Link>
                       </div>
                       {followUp && (
                         <p

@@ -175,10 +175,25 @@ const INQUIRY_TYPES = new Set<InquiryType>([
 const INQUIRY_STAGES = new Set<InquiryStage>([
   "new",
   "contacted",
+  "interested",
+  "follow_up",
   "proposal_sent",
+  "negotiation",
   "won",
   "lost",
+  "not_interested",
 ]);
+
+const isClosedStage = (s: InquiryStage) =>
+  s === "won" || s === "lost" || s === "not_interested";
+
+/** Lead owner: an active person, or null. Defaults to whoever adds it. */
+async function ownerFrom(v: FormDataEntryValue | null): Promise<string | null> {
+  const id = String(v ?? "").trim();
+  if (!id) return null;
+  const p = await prisma.profile.findFirst({ where: { id, is_active: true }, select: { id: true } });
+  return p?.id ?? null;
+}
 
 const INQUIRY_SOURCES = new Set<InquirySource>([
   "referral",
@@ -230,6 +245,10 @@ export async function createInquiry(
       budget,
       next_follow_up: parseDateOnly(formData.get("next_follow_up")),
       notes: str(formData.get("notes")),
+      // Blank ("Me") or no field at all: whoever adds the lead owns it.
+      owner_id: (await ownerFrom(formData.get("owner_id"))) ?? userId,
+      phone: str(formData.get("phone")),
+      email: str(formData.get("email")),
       created_by: userId,
     },
   });
@@ -269,15 +288,19 @@ export async function updateInquiry(
       // A closed inquiry has nothing left to chase; a live one has no reason
       // to carry a lost reason.
       next_follow_up:
-        stage === "won" || stage === "lost"
+        isClosedStage(stage)
           ? null
           : parseDateOnly(formData.get("next_follow_up")),
       lost_reason: stage === "lost" ? str(formData.get("lost_reason")) : null,
       notes: str(formData.get("notes")),
+      ...(formData.has("owner_id") ? { owner_id: await ownerFrom(formData.get("owner_id")) } : {}),
+      phone: str(formData.get("phone")),
+      email: str(formData.get("email")),
     },
   });
 
   revalidatePath("/pipeline");
+  revalidatePath(`/pipeline/${id}`);
   revalidatePath("/");
   return { success: "Inquiry updated." };
 }
@@ -285,6 +308,14 @@ export async function updateInquiry(
 export async function deleteInquiry(formData: FormData): Promise<void> {
   if (!(await requireUserId("pipeline.delete"))) return;
   const id = String(formData.get("id") ?? "");
+  // Its calls go with it (cascade); their recordings' files must be removed
+  // first or they'd be stranded in storage/Drive.
+  const recordings = await prisma.document.findMany({
+    where: { call: { inquiry_id: id } },
+    select: { id: true, source: true, storage_path: true, drive_file_id: true },
+  });
+  await purgeDocumentFiles(recordings);
+  await prisma.document.deleteMany({ where: { id: { in: recordings.map((r) => r.id) } } });
   await prisma.inquiry.delete({ where: { id } });
   revalidatePath("/pipeline");
   revalidatePath("/");
@@ -298,7 +329,7 @@ export async function moveInquiryStage(
   if (!(await requireUserId("pipeline.manage"))) return;
   if (!INQUIRY_STAGES.has(stage)) return;
 
-  const closed = stage === "won" || stage === "lost";
+  const closed = isClosedStage(stage);
   await prisma.inquiry.update({
     where: { id },
     data: { stage, ...(closed && { next_follow_up: null }) },

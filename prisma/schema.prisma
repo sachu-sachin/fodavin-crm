@@ -25,6 +25,25 @@ enum InquiryStage {
   proposal_sent
   won
   lost
+  interested
+  follow_up
+  negotiation
+  not_interested
+}
+
+enum CallDirection {
+  outgoing
+  incoming
+}
+
+enum CallOutcome {
+  connected
+  interested
+  call_back
+  no_answer
+  busy
+  not_interested
+  wrong_number
 }
 
 enum InquiryType {
@@ -281,6 +300,8 @@ model Profile {
   digests            DigestLog[]
   attendance         Attendance[]       @relation("AttendanceOf")
   daily_reports      DailyReport[]      @relation("ReportOf")
+  owned_leads        Inquiry[]          @relation("InquiryOwner")
+  logged_calls       CallLog[]          @relation("CallLogger")
   leave_requests     LeaveRequest[]     @relation("LeaveOf")
 
   @@index([role_id])
@@ -302,6 +323,7 @@ model Company {
 
   contacts     Contact[]
   inquiries    Inquiry[]
+  calls        CallLog[]
   projects     Project[]
   social_posts SocialPost[]
   documents    Document[]
@@ -347,18 +369,26 @@ model Inquiry {
   /// Why a lead was lost — only meaningful on the `lost` stage.
   lost_reason    String?
   notes          String?
+  /// The Business Executive (or anyone) responsible for chasing it.
+  owner_id       String?        @db.Uuid
+  /// Direct details for a lead whose contact isn't in the directory yet.
+  phone          String?
+  email          String?
   created_by     String?        @db.Uuid
   created_at     DateTime       @default(now()) @db.Timestamptz(6)
   updated_at     DateTime       @default(now()) @db.Timestamptz(6)
 
   company  Company?  @relation(fields: [company_id], references: [id], onDelete: SetNull)
   contact  Contact?  @relation(fields: [contact_id], references: [id], onDelete: SetNull)
+  owner    Profile?  @relation("InquiryOwner", fields: [owner_id], references: [id], onDelete: SetNull)
   projects Project[]
+  calls    CallLog[]
 
   @@index([stage])
   @@index([company_id])
   @@index([contact_id])
   @@index([next_follow_up])
+  @@index([owner_id])
   @@map("inquiries")
 }
 
@@ -660,6 +690,8 @@ model Document {
 
   company_id String? @db.Uuid
   project_id String? @db.Uuid
+  /// Set for a call recording.
+  call_id    String? @db.Uuid
 
   notes       String?
   uploaded_by String?  @db.Uuid
@@ -668,9 +700,11 @@ model Document {
 
   company Company? @relation(fields: [company_id], references: [id], onDelete: Cascade)
   project Project? @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  call    CallLog? @relation(fields: [call_id], references: [id], onDelete: SetNull)
 
   @@index([company_id])
   @@index([project_id])
+  @@index([call_id])
   @@map("documents")
 }
 
@@ -874,4 +908,33 @@ model DailyReport {
   @@unique([profile_id, report_date, kind])
   @@index([report_date])
   @@map("daily_reports")
+}
+
+/// A phone call with a lead. Logged by whoever made or took it; a recording
+/// is an ordinary Document (Document.call_id), so it also appears in the
+/// client's documents when the lead belongs to a client.
+model CallLog {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inquiry_id       String?       @db.Uuid
+  /// The lead's client at the time, so calls show on the client page.
+  company_id       String?       @db.Uuid
+  direction        CallDirection @default(outgoing)
+  outcome          CallOutcome
+  called_at        DateTime      @default(now()) @db.Timestamptz(6)
+  duration_minutes Int?
+  notes            String?
+  next_follow_up   DateTime?     @db.Date
+  logged_by        String?       @db.Uuid
+  created_at       DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime      @default(now()) @db.Timestamptz(6)
+
+  inquiry    Inquiry?   @relation(fields: [inquiry_id], references: [id], onDelete: Cascade)
+  company    Company?   @relation(fields: [company_id], references: [id], onDelete: SetNull)
+  logger     Profile?   @relation("CallLogger", fields: [logged_by], references: [id], onDelete: SetNull)
+  recordings Document[]
+
+  @@index([inquiry_id])
+  @@index([company_id])
+  @@index([called_at])
+  @@map("call_logs")
 }
