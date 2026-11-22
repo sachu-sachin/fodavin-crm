@@ -4,17 +4,16 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { VERIFIED_USER_HEADER } from "@/lib/supabase/verified-user-header";
 import { prisma } from "@/lib/prisma";
-import {
-  allPermissions,
-  expandPermissions,
-  type Permission,
-} from "@/lib/permissions";
+import type { Permission } from "@/lib/permissions";
+import { effectiveAccess, ROLES_INCLUDE, rolesOf } from "@/lib/roles";
 import type { ProfileWithRole } from "@/lib/types";
 
 export interface SessionProfile {
   userId: string;
   profile: ProfileWithRole | null;
   isAdmin: boolean;
+  /** Every role the person holds: the main one first, then additional ones. */
+  roleIds: string[];
   /** Effective permissions — every permission when isAdmin. */
   permissions: Set<Permission>;
 }
@@ -53,22 +52,23 @@ export const getSessionProfile = cache(
 
     const profile = await prisma.profile.findUnique({
       where: { id: userId },
-      include: { role: true },
+      include: ROLES_INCLUDE,
     });
 
     if (profile && !profile.is_active) {
       redirect("/auth/signout?reason=deactivated");
     }
 
-    const isAdmin = !!profile?.role?.is_admin;
+    // Permissions are the union of every role held; admin if any role is.
+    const roles = profile ? rolesOf(profile) : [];
+    const { isAdmin, permissions } = effectiveAccess(roles);
 
     return {
       userId,
       profile: profile as unknown as ProfileWithRole | null,
       isAdmin,
-      permissions: isAdmin
-        ? allPermissions()
-        : expandPermissions(profile?.role?.permissions ?? []),
+      roleIds: roles.map((r) => r.id),
+      permissions,
     };
   },
 );

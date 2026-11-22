@@ -25,7 +25,7 @@ function person(id: string, over: Partial<DigestPerson> = {}): DigestPerson {
     id,
     name: id,
     email: `${id}@example.com`,
-    roleId: null,
+    roleIds: [],
     permissions: new Set(),
     emailDigest: true,
     ...over,

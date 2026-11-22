@@ -166,6 +166,13 @@ one move away.
 4. **New permissions, if any**: add them to the template roles with a script
    that only adds. **Don't run `db:seed` here** — it overwrites the template
    roles' permissions and undoes changes made on the Roles page.
+   **New template roles** (e.g. Managing Lead, Business Executive, Video
+   Editor): `scripts/add-missing-roles.mjs` creates only the ones that don't
+   exist and never changes an existing role. In the build folder:
+   ```bash
+   npx tsc src/lib/permissions.ts --outDir .seed-build --module es2022 --target es2022 --moduleResolution bundler --skipLibCheck
+   node --env-file=.env.local scripts/add-missing-roles.mjs   # prints the project ref first
+   ```
 5. **Switch** (a few seconds of downtime):
    ```bash
    sudo systemctl stop fodavin-crm

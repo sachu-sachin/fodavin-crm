@@ -17,7 +17,7 @@ const me: DigestPerson = {
   id: "me",
   name: "Asha",
   email: "asha@example.com",
-  roleId: "dev",
+  roleIds: ["dev"],
   permissions: new Set(),
   emailDigest: true,
 };

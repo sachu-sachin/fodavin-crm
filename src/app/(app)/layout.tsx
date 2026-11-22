@@ -16,7 +16,11 @@ export default async function AppLayout({
   const { profile } = session;
   const name = profile?.full_name || profile?.email?.split("@")[0] || "User";
   const email = profile?.email || "";
-  const roleName = profile?.role?.name ?? null;
+  const roleNames = [
+    profile?.role?.name,
+    ...(profile?.extra_roles ?? []).map((r) => r.role.name),
+  ].filter((n, i, all): n is string => !!n && all.indexOf(n) === i);
+  const roleName = roleNames.length ? roleNames.join(" · ") : null;
 
   return (
     <div className="flex min-h-svh bg-muted/30">

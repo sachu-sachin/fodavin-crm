@@ -108,6 +108,41 @@ describe("getSessionProfile", () => {
     expect(session?.permissions.has("finance.view")).toBe(true);
   });
 
+  it("combines the main role with additional roles", async () => {
+    mockUser("user-2");
+    mockProfile({
+      id: "user-2",
+      is_active: true,
+      role_id: "role-dev",
+      role: { id: "role-dev", name: "Developer", is_admin: false, permissions: ["tasks.manage"] },
+      extra_roles: [
+        { role: { id: "role-video", name: "Video Editor", is_admin: false, permissions: ["social.manage"] } },
+      ],
+    });
+
+    const session = await getSessionProfile();
+    expect(session?.isAdmin).toBe(false);
+    expect(session?.roleIds).toEqual(["role-dev", "role-video"]);
+    expect(session?.permissions.has("tasks.manage")).toBe(true);
+    expect(session?.permissions.has("social.view")).toBe(true);
+    expect(session?.permissions.has("finance.view")).toBe(false);
+  });
+
+  it("is admin when only an additional role is admin", async () => {
+    mockUser("user-3");
+    mockProfile({
+      id: "user-3",
+      is_active: true,
+      role_id: null,
+      role: null,
+      extra_roles: [{ role: { id: "role-admin", name: "Admin", is_admin: true, permissions: [] } }],
+    });
+
+    const session = await getSessionProfile();
+    expect(session?.isAdmin).toBe(true);
+    expect(session?.permissions.has("roles.manage")).toBe(true);
+  });
+
   it("treats a user with no profile row as a non-admin with no permissions", async () => {
     mockUser("orphan-1");
     mockProfile(null);

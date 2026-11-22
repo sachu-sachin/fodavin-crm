@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { authorize, DENIED_MESSAGE } from "@/lib/auth";
 import { isPermission, ROLE_TEMPLATES } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { wouldCreateCycle } from "@/lib/roles";
 
 export type ActionState = { error?: string; success?: string };
 
@@ -21,6 +22,8 @@ export async function createEmployee(
   const password = String(formData.get("password") ?? "");
   const fullName = String(formData.get("full_name") ?? "").trim();
   const roleId = String(formData.get("role_id") ?? "").trim();
+  const extraRoleIds = formData.getAll("extra_role_ids").map(String);
+  const leadId = String(formData.get("reports_to_id") ?? "") || null;
 
   if (!email || !password || !fullName) {
     return { error: "Name, email and password are required." };
@@ -32,7 +35,7 @@ export async function createEmployee(
   // The auth user must be created via Supabase's Admin API. A DB trigger
   // then creates the matching profile row (reading full_name + role_id here).
   const admin = createAdminClient();
-  const { error } = await admin.auth.admin.createUser({
+  const { data, error } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
@@ -41,7 +44,21 @@ export async function createEmployee(
 
   if (error) return { error: error.message };
 
+  // The trigger has created the profile by now (same transaction as the auth
+  // user), so the extra roles and the lead can be set straight away.
+  const newId = data?.user?.id;
+  if (newId) {
+    await replaceExtraRoles(newId, extraRoleIds);
+    if (leadId) {
+      const leadError = await setLead(newId, leadId);
+      if (leadError) {
+        return { error: `Account created, but ${leadError.toLowerCase()}` };
+      }
+    }
+  }
+
   revalidatePath("/employees");
+  revalidatePath("/team");
   return { success: `${fullName} can now sign in with their email + password.` };
 }
 
@@ -52,6 +69,80 @@ export async function updateEmployeeRole(formData: FormData): Promise<void> {
 
   await prisma.profile.update({ where: { id }, data: { role_id: roleId } });
   revalidatePath("/employees");
+}
+
+/**
+ * Replace someone's additional roles. Ids that aren't real roles are dropped,
+ * so a tampered form can't attach anything else.
+ */
+async function replaceExtraRoles(profileId: string, requested: string[]) {
+  const unique = [...new Set(requested.filter(Boolean))];
+  const valid = unique.length
+    ? (
+        await prisma.role.findMany({
+          where: { id: { in: unique } },
+          select: { id: true },
+        })
+      ).map((r) => r.id)
+    : [];
+
+  await prisma.$transaction([
+    prisma.profileRole.deleteMany({ where: { profile_id: profileId } }),
+    ...(valid.length
+      ? [
+          prisma.profileRole.createMany({
+            data: valid.map((role_id) => ({ profile_id: profileId, role_id })),
+          }),
+        ]
+      : []),
+  ]);
+}
+
+export async function updateEmployeeExtraRoles(formData: FormData): Promise<void> {
+  if (!(await authorize("employees.manage"))) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  await replaceExtraRoles(id, formData.getAll("extra_role_ids").map(String));
+  revalidatePath("/employees");
+  revalidatePath("/team");
+}
+
+/** Set (or clear, with null) someone's managing lead. Returns an error message. */
+async function setLead(profileId: string, leadId: string | null): Promise<string | null> {
+  if (leadId) {
+    const people = await prisma.profile.findMany({
+      select: { id: true, is_active: true, reports_to_id: true },
+    });
+    const lead = people.find((p) => p.id === leadId);
+    if (!lead || !lead.is_active) return "That lead isn't an active employee.";
+    const leadOf = new Map(people.map((p) => [p.id, p.reports_to_id]));
+    if (wouldCreateCycle(profileId, leadId, leadOf)) {
+      return "Someone can't report to themselves or to a person who reports to them.";
+    }
+  }
+  await prisma.profile.update({
+    where: { id: profileId },
+    data: { reports_to_id: leadId },
+  });
+  return null;
+}
+
+export async function updateEmployeeLead(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  if (!(await authorize("employees.manage"))) return { error: DENIED_MESSAGE };
+  const id = String(formData.get("id") ?? "");
+  const leadId = String(formData.get("reports_to_id") ?? "") || null;
+  if (!id) return { error: "Unknown employee." };
+
+  const error = await setLead(id, leadId);
+  if (error) return { error };
+
+  revalidatePath("/employees");
+  revalidatePath("/team");
+  return { success: leadId ? "Reporting lead updated." : "Reporting lead removed." };
 }
 
 // Supabase has no "disable user" flag — a long ban is the supported way to

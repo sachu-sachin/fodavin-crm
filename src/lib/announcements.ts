@@ -14,23 +14,26 @@ export function announcementStatus(
   return "live";
 }
 
-/** Is it addressed to someone with this role? An empty audience means everyone. */
+/**
+ * Is it addressed to someone holding these roles (main + additional)? An
+ * empty audience means everyone.
+ */
 export function isForRole(
   a: { audience_role_ids: string[] },
-  roleId: string | null,
+  roleIds: readonly string[],
 ): boolean {
   return (
     a.audience_role_ids.length === 0 ||
-    (roleId != null && a.audience_role_ids.includes(roleId))
+    roleIds.some((id) => a.audience_role_ids.includes(id))
   );
 }
 
 /**
  * The prisma `where` for what a person sees: live now, and addressed to
- * everyone or to their role. Mirrors announcementStatus + isForRole.
+ * everyone or to one of their roles. Mirrors announcementStatus + isForRole.
  */
 export function liveForRoleWhere(
-  roleId: string | null,
+  roleIds: readonly string[],
   now: Date,
 ): Prisma.AnnouncementWhereInput {
   return {
@@ -40,7 +43,9 @@ export function liveForRoleWhere(
       {
         OR: [
           { audience_role_ids: { isEmpty: true } },
-          ...(roleId ? [{ audience_role_ids: { has: roleId } }] : []),
+          ...(roleIds.length > 0
+            ? [{ audience_role_ids: { hasSome: [...roleIds] } }]
+            : []),
         ],
       },
     ],

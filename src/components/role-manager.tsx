@@ -251,7 +251,7 @@ export function RoleManager({
           title="Delete this role?"
           body={
             (usageByRole[pendingDelete.id] ?? 0) > 0
-              ? `${usageByRole[pendingDelete.id]} employee(s) currently hold "${pendingDelete.name}". They will be left with no role and lose all access until you assign them another. This cannot be undone.`
+              ? `${usageByRole[pendingDelete.id]} employee(s) currently hold "${pendingDelete.name}". They lose everything it grants: anyone with it as their main role is left with no main role until you assign another. This cannot be undone.`
               : `"${pendingDelete.name}" will be permanently deleted. This cannot be undone.`
           }
           confirmLabel="Delete role"

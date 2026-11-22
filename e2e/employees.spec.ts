@@ -38,7 +38,7 @@ test.describe("Employees (admin)", () => {
 
     const row = page.locator("tr", { hasText: fullName });
     await expect(row).toBeVisible();
-    await row.getByRole("combobox").selectOption({ label: "QA Engineer" });
+    await row.getByRole("combobox", { name: "Main role" }).selectOption({ label: "QA Engineer" });
     // The select's onChange does a bare form.requestSubmit() (no
     // useTransition to await) — give the fire-and-forget submission a
     // moment to land before reloading to check it persisted.
@@ -48,9 +48,47 @@ test.describe("Employees (admin)", () => {
     await page.reload();
     const selectedLabel = await page
       .locator("tr", { hasText: fullName })
-      .getByRole("combobox")
+      .getByRole("combobox", { name: "Main role" })
       .evaluate((el: HTMLSelectElement) => el.selectedOptions[0]?.textContent);
     expect(selectedLabel).toBe("QA Engineer");
+  });
+
+  test("gives an employee an additional role and a reporting lead", async ({ page }) => {
+    const leadName = testName("Lead");
+    const memberName = testName("Member");
+    const stamp = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}@fodavin-test.local`;
+
+    await page.goto("/employees");
+    // The lead first, so they can be picked as the member's lead.
+    await page.getByLabel("Full name").fill(leadName);
+    await page.getByLabel("Email").fill(stamp());
+    await page.getByLabel("Temporary password").fill("temp12345");
+    await page.locator("#role_id").selectOption({ label: "Managing Lead" });
+    await page.getByRole("button", { name: "Create account" }).click();
+    await expect(page.locator("tr", { hasText: leadName })).toBeVisible();
+
+    // The member: main role Frontend Developer + Video Editor, reporting to the lead.
+    await page.getByLabel("Full name").fill(memberName);
+    await page.getByLabel("Email").fill(stamp());
+    await page.getByLabel("Temporary password").fill("temp12345");
+    await page.locator("#role_id").selectOption({ label: "Frontend Developer" });
+    await page
+      .getByRole("group", { name: "Additional roles" })
+      .getByLabel("Video Editor")
+      .check();
+    await page.locator("#reports_to_id").selectOption({ label: leadName });
+    await page.getByRole("button", { name: "Create account" }).click();
+
+    const row = page.locator("tr", { hasText: memberName });
+    await expect(row).toBeVisible();
+    await expect(row.getByText("+ Video Editor")).toBeVisible();
+    await expect(row.getByRole("combobox", { name: "Reporting lead" })).toHaveValue(/.+/);
+
+    await page.goto("/team");
+    const card = page.locator("div", { hasText: memberName }).filter({ hasText: "Reports to" }).last();
+    await expect(card.getByText(`Reports to ${leadName}`)).toBeVisible();
+    await expect(card.getByText("Frontend Developer")).toBeVisible();
+    await expect(card.getByText("Video Editor")).toBeVisible();
   });
 
   test("admin cannot deactivate their own account", async ({ page }) => {

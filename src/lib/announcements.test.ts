@@ -28,28 +28,34 @@ describe("announcementStatus", () => {
 
 describe("isForRole", () => {
   it("an empty audience is everyone, including people with no role", () => {
-    expect(isForRole({ audience_role_ids: [] }, "r1")).toBe(true);
-    expect(isForRole({ audience_role_ids: [] }, null)).toBe(true);
+    expect(isForRole({ audience_role_ids: [] }, ["r1"])).toBe(true);
+    expect(isForRole({ audience_role_ids: [] }, [])).toBe(true);
   });
 
   it("a role-limited audience includes only those roles", () => {
     const a = { audience_role_ids: ["r1", "r2"] };
-    expect(isForRole(a, "r2")).toBe(true);
-    expect(isForRole(a, "r3")).toBe(false);
-    expect(isForRole(a, null)).toBe(false);
+    expect(isForRole(a, ["r2"])).toBe(true);
+    expect(isForRole(a, ["r3"])).toBe(false);
+    expect(isForRole(a, [])).toBe(false);
+  });
+
+  it("matches when any of several roles is in the audience", () => {
+    const a = { audience_role_ids: ["r2"] };
+    expect(isForRole(a, ["r1", "r2"])).toBe(true);
+    expect(isForRole(a, ["r1", "r3"])).toBe(false);
   });
 });
 
 describe("liveForRoleWhere", () => {
   it("filters to live and addressed to everyone or the role", () => {
-    expect(liveForRoleWhere("r1", now)).toEqual({
+    expect(liveForRoleWhere(["r1", "r2"], now)).toEqual({
       publish_at: { lte: now },
       AND: [
         { OR: [{ expires_at: null }, { expires_at: { gt: now } }] },
         {
           OR: [
             { audience_role_ids: { isEmpty: true } },
-            { audience_role_ids: { has: "r1" } },
+            { audience_role_ids: { hasSome: ["r1", "r2"] } },
           ],
         },
       ],
@@ -57,7 +63,7 @@ describe("liveForRoleWhere", () => {
   });
 
   it("without a role, matches only everyone-announcements", () => {
-    const where = liveForRoleWhere(null, now);
+    const where = liveForRoleWhere([], now);
     expect(where.AND).toContainEqual({ OR: [{ audience_role_ids: { isEmpty: true } }] });
   });
 });
