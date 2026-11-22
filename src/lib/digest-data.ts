@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { allPermissions, expandPermissions } from "@/lib/permissions";
+import { effectiveAccess, rolesOf } from "@/lib/roles";
 import { OPEN_INQUIRY_STAGES } from "@/lib/types";
 import type { DigestPerson, DigestSource } from "@/lib/digest";
 
@@ -41,7 +41,10 @@ export async function loadDigestInputs(
         email: true,
         role_id: true,
         email_digest: true,
-        role: { select: { is_admin: true, permissions: true } },
+        role: { select: { id: true, is_admin: true, permissions: true } },
+        extra_roles: {
+          select: { role: { select: { id: true, is_admin: true, permissions: true } } },
+        },
       },
     }),
     prisma.task.findMany({
@@ -118,16 +121,17 @@ export async function loadDigestInputs(
     }),
   ]);
 
-  const people: DigestPerson[] = profiles.map((p) => ({
-    id: p.id,
-    name: p.full_name || p.email?.split("@")[0] || "there",
-    email: p.email,
-    roleId: p.role_id,
-    permissions: p.role?.is_admin
-      ? allPermissions()
-      : expandPermissions(p.role?.permissions ?? []),
-    emailDigest: p.email_digest,
-  }));
+  const people: DigestPerson[] = profiles.map((p) => {
+    const roles = rolesOf(p);
+    return {
+      id: p.id,
+      name: p.full_name || p.email?.split("@")[0] || "there",
+      email: p.email,
+      roleIds: roles.map((r) => r.id),
+      permissions: effectiveAccess(roles).permissions,
+      emailDigest: p.email_digest,
+    };
+  });
 
   const source: DigestSource = {
     tasks: tasks.map((t) => ({

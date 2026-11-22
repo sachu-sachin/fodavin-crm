@@ -21,13 +21,13 @@ export default async function AnnouncementsPage() {
   const session = await getSessionProfile();
   if (!session) redirect("/login");
   const canManage = can(session, "announcements.manage");
-  const roleId = session.profile?.role_id ?? null;
+  const roleIds = session.roleIds;
   const now = new Date();
 
   const [rows, myReads, profiles, roles, allReads] = await Promise.all([
     prisma.announcement.findMany({
       // Managers see everything, including scheduled and expired ones.
-      where: canManage ? {} : liveForRoleWhere(roleId, now),
+      where: canManage ? {} : liveForRoleWhere(roleIds, now),
       orderBy: { publish_at: "desc" },
     }),
     prisma.announcementRead.findMany({
@@ -35,7 +35,14 @@ export default async function AnnouncementsPage() {
       select: { announcement_id: true },
     }),
     prisma.profile.findMany({
-      select: { id: true, full_name: true, email: true, role_id: true, is_active: true },
+      select: {
+        id: true,
+        full_name: true,
+        email: true,
+        role_id: true,
+        is_active: true,
+        extra_roles: { select: { role_id: true } },
+      },
       orderBy: { created_at: "asc" },
     }),
     canManage
@@ -58,7 +65,14 @@ export default async function AnnouncementsPage() {
     if (!readersOf.has(r.announcement_id)) readersOf.set(r.announcement_id, new Set());
     readersOf.get(r.announcement_id)!.add(r.profile_id);
   }
-  const activeStaff = profiles.filter((p) => p.is_active);
+  const activeStaff = profiles
+    .filter((p) => p.is_active)
+    .map((p) => ({
+      id: p.id,
+      roleIds: [p.role_id, ...p.extra_roles.map((r) => r.role_id)].filter(
+        (id): id is string => !!id,
+      ),
+    }));
 
   const announcements: Announcement[] = rows.map((a) => ({
     ...a,
@@ -69,7 +83,7 @@ export default async function AnnouncementsPage() {
   }));
 
   function receiptsFor(a: Announcement): ReadReceipts {
-    const audience = activeStaff.filter((p) => isForRole(a, p.role_id));
+    const audience = activeStaff.filter((p) => isForRole(a, p.roleIds));
     const readers = readersOf.get(a.id) ?? new Set<string>();
     return {
       read: audience.filter((p) => readers.has(p.id)).length,
@@ -95,7 +109,7 @@ export default async function AnnouncementsPage() {
       authorName={a.created_by ? (nameOf.get(a.created_by) ?? null) : null}
       // One not addressed to the viewer (a manager seeing everything) has
       // nothing for them to mark.
-      isRead={readByMe.has(a.id) || !isForRole(a, roleId)}
+      isRead={readByMe.has(a.id) || !isForRole(a, roleIds)}
       receipts={canManage ? receiptsFor(a) : undefined}
       roles={canManage ? roles : undefined}
     />

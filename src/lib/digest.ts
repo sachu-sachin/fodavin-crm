@@ -10,7 +10,8 @@ export interface DigestPerson {
   id: string;
   name: string;
   email: string | null;
-  roleId: string | null;
+  /** Main role first, then additional ones. */
+  roleIds: string[];
   permissions: Set<Permission>;
   emailDigest: boolean;
 }
@@ -158,7 +159,7 @@ export function digestFor(
       (p) =>
         !p.readBy.has(person.id) &&
         (p.audienceRoleIds.length === 0 ||
-          (person.roleId != null && p.audienceRoleIds.includes(person.roleId))),
+          person.roleIds.some((id) => p.audienceRoleIds.includes(id))),
     )
     .map((p) => ({
       text: p.title,

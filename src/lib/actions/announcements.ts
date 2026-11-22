@@ -181,7 +181,7 @@ export async function markAnnouncementRead(id: string): Promise<AnnouncementStat
   });
   if (!announcement) return unavailable;
   if (announcementStatus(announcement, new Date()) !== "live") return unavailable;
-  if (!isForRole(announcement, session.profile?.role_id ?? null)) return unavailable;
+  if (!isForRole(announcement, session.roleIds)) return unavailable;
 
   await prisma.announcementRead.upsert({
     where: {

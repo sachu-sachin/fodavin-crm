@@ -121,12 +121,16 @@ export interface Profile {
   is_active: boolean;
   /** Receives the daily reminder email. */
   email_digest: boolean;
+  /** Their managing lead, if any. */
+  reports_to_id: string | null;
   created_at: string;
 }
 
 /** Profile joined with its role (as returned by select with a role relation). */
 export interface ProfileWithRole extends Profile {
   role: Pick<Role, "id" | "name" | "is_admin"> | null;
+  /** Roles held on top of the main one (present when loaded with ROLES_INCLUDE). */
+  extra_roles?: { role: Pick<Role, "id" | "name" | "is_admin"> }[];
 }
 
 export interface Company {

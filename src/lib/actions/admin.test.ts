@@ -14,8 +14,10 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    profile: { update: vi.fn() },
-    role: { create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    profile: { update: vi.fn(), findMany: vi.fn() },
+    role: { create: vi.fn(), update: vi.fn(), delete: vi.fn(), findMany: vi.fn() },
+    profileRole: { deleteMany: vi.fn(), createMany: vi.fn() },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -25,6 +27,7 @@ const { createAdminClient } = await import("@/lib/supabase/admin");
 const { prisma } = await import("@/lib/prisma");
 const {
   createEmployee, updateEmployeeRole, setEmployeeActive, resetEmployeePassword,
+  updateEmployeeExtraRoles, updateEmployeeLead,
   createRole, updateRole, applyRoleTemplate, deleteRole,
 } = await import("./admin");
 
@@ -100,6 +103,114 @@ describe("createEmployee", () => {
     );
     expect(result.success).toContain("Alice");
     expect(revalidatePath).toHaveBeenCalledWith("/employees");
+  });
+});
+
+describe("createEmployee: additional roles and lead", () => {
+  it("sets extra roles and the lead on the new profile", async () => {
+    authorized();
+    mockAdminClient({
+      createUser: vi.fn().mockResolvedValue({ data: { user: { id: "new-1" } }, error: null }),
+    });
+    vi.mocked(prisma.role.findMany).mockResolvedValue([{ id: "role-video" }] as never);
+    vi.mocked(prisma.profile.findMany).mockResolvedValue([
+      { id: "new-1", is_active: true, reports_to_id: null },
+      { id: "lead-1", is_active: true, reports_to_id: null },
+    ] as never);
+
+    const fd = form({ email: "a@b.com", password: "password1", full_name: "Alice", reports_to_id: "lead-1" });
+    fd.append("extra_role_ids", "role-video");
+    const result = await createEmployee({}, fd);
+
+    expect(result.success).toContain("Alice");
+    expect(prisma.profileRole.createMany).toHaveBeenCalledWith({
+      data: [{ profile_id: "new-1", role_id: "role-video" }],
+    });
+    expect(prisma.profile.update).toHaveBeenCalledWith({
+      where: { id: "new-1" },
+      data: { reports_to_id: "lead-1" },
+    });
+  });
+});
+
+describe("updateEmployeeExtraRoles", () => {
+  it("does nothing without employees.manage", async () => {
+    unauthorized();
+    await updateEmployeeExtraRoles(form({ id: "u2" }));
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("replaces the set, keeping only roles that exist", async () => {
+    authorized();
+    vi.mocked(prisma.role.findMany).mockResolvedValue([{ id: "role-a" }] as never);
+    const fd = form({ id: "u2" });
+    fd.append("extra_role_ids", "role-a");
+    fd.append("extra_role_ids", "not-a-role");
+    fd.append("extra_role_ids", "role-a");
+    await updateEmployeeExtraRoles(fd);
+
+    expect(prisma.role.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["role-a", "not-a-role"] } },
+      select: { id: true },
+    });
+    expect(prisma.profileRole.deleteMany).toHaveBeenCalledWith({ where: { profile_id: "u2" } });
+    expect(prisma.profileRole.createMany).toHaveBeenCalledWith({
+      data: [{ profile_id: "u2", role_id: "role-a" }],
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears every additional role when none are ticked", async () => {
+    authorized();
+    await updateEmployeeExtraRoles(form({ id: "u2" }));
+    expect(prisma.role.findMany).not.toHaveBeenCalled();
+    expect(prisma.profileRole.deleteMany).toHaveBeenCalledWith({ where: { profile_id: "u2" } });
+    expect(prisma.profileRole.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateEmployeeLead", () => {
+  const people = [
+    { id: "a", is_active: true, reports_to_id: "b" },
+    { id: "b", is_active: true, reports_to_id: null },
+    { id: "gone", is_active: false, reports_to_id: null },
+  ];
+
+  it("denies without employees.manage", async () => {
+    unauthorized();
+    expect(await updateEmployeeLead({}, form({ id: "a", reports_to_id: "b" }))).toEqual({
+      error: DENIED_MESSAGE,
+    });
+  });
+
+  it("sets the lead", async () => {
+    authorized();
+    vi.mocked(prisma.profile.findMany).mockResolvedValue(people as never);
+    const result = await updateEmployeeLead({}, form({ id: "a", reports_to_id: "b" }));
+    expect(result.success).toBeTruthy();
+    expect(prisma.profile.update).toHaveBeenCalledWith({ where: { id: "a" }, data: { reports_to_id: "b" } });
+  });
+
+  it("refuses a loop", async () => {
+    authorized();
+    vi.mocked(prisma.profile.findMany).mockResolvedValue(people as never);
+    const result = await updateEmployeeLead({}, form({ id: "b", reports_to_id: "a" }));
+    expect(result.error).toMatch(/reports to them/);
+    expect(prisma.profile.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses an inactive lead", async () => {
+    authorized();
+    vi.mocked(prisma.profile.findMany).mockResolvedValue(people as never);
+    const result = await updateEmployeeLead({}, form({ id: "a", reports_to_id: "gone" }));
+    expect(result.error).toMatch(/active employee/);
+  });
+
+  it("clears the lead without looking anyone up", async () => {
+    authorized();
+    await updateEmployeeLead({}, form({ id: "a" }));
+    expect(prisma.profile.findMany).not.toHaveBeenCalled();
+    expect(prisma.profile.update).toHaveBeenCalledWith({ where: { id: "a" }, data: { reports_to_id: null } });
   });
 });
 

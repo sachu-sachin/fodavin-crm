@@ -179,9 +179,29 @@ model Role {
   /// catalogue. Unknown values are ignored when the set is expanded.
   permissions String[]  @default([])
   created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  /// People with this as their main role.
   profiles    Profile[]
+  /// People holding it as an additional role.
+  extra_holders ProfileRole[]
 
   @@map("roles")
+}
+
+/// A role someone holds on top of their main one (Profile.role_id), e.g. a
+/// developer who also edits videos. Permissions are the union of all of a
+/// person's roles. The main role stays on the profile so the account-creation
+/// trigger and anything reading role_id keep working unchanged.
+model ProfileRole {
+  profile_id String   @db.Uuid
+  role_id    String   @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@id([profile_id, role_id])
+  @@index([role_id])
+  @@map("profile_roles")
 }
 
 /// 1:1 with auth.users (FK added in supabase/setup.sql).
@@ -194,9 +214,15 @@ model Profile {
   is_active    Boolean  @default(true)
   /// Receive the daily reminder email. Each person can switch it off.
   email_digest Boolean  @default(true)
+  /// Their managing lead. Leads look after attendance, tasks and daily
+  /// reports for the people who report to them.
+  reports_to_id String? @db.Uuid
   created_at   DateTime @default(now()) @db.Timestamptz(6)
 
   role               Role?              @relation(fields: [role_id], references: [id], onDelete: SetNull)
+  extra_roles        ProfileRole[]
+  reports_to         Profile?           @relation("ReportsTo", fields: [reports_to_id], references: [id], onDelete: SetNull)
+  reportees          Profile[]          @relation("ReportsTo")
   assigned_tasks     Task[]             @relation("TaskAssignee")
   assigned_posts     SocialPost[]       @relation("PostAssignee")
   time_entries       TimeEntry[]
@@ -207,6 +233,7 @@ model Profile {
   digests            DigestLog[]
 
   @@index([role_id])
+  @@index([reports_to_id])
   @@map("profiles")
 }
 

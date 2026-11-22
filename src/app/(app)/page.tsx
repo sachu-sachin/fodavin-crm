@@ -37,7 +37,7 @@ export default async function DashboardPage() {
   );
   const weekAhead = new Date(`${addDays(today, 7)}T23:59:59+05:30`);
   const unreadWhere = {
-    ...liveForRoleWhere(session.profile?.role_id ?? null, new Date()),
+    ...liveForRoleWhere(session.roleIds, new Date()),
     reads: { none: { profile_id: session.userId } },
   };
 

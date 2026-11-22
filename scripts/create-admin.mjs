@@ -6,10 +6,11 @@
 //   node --env-file=.env.local scripts/create-admin.mjs \
 //     admin@fodavin.com "StrongPassword123" "Founder Name"
 //
-// Requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local,
-// and the schema (supabase/migrations/0001_init.sql) already applied.
+// Requires NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and
+// DATABASE_URL in that env file, with the schema pushed and roles seeded.
 
 import { createClient } from "@supabase/supabase-js";
+import { PrismaClient } from "@prisma/client";
 
 const [, , email, password, fullName] = process.argv;
 
@@ -34,17 +35,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-const { data: role, error: roleError } = await admin
-  .from("roles")
-  .select("id")
-  .eq("name", "Admin")
-  .single();
+// Read the role with Prisma: supabase/setup.sql locks the Data API out of
+// every app table (Finding 11 in docs/testing.md), so admin.from("roles")
+// is refused even with the service key.
+const prisma = new PrismaClient();
+const role = await prisma.role.findUnique({
+  where: { name: "Admin" },
+  select: { id: true },
+});
+await prisma.$disconnect();
 
-if (roleError || !role) {
-  console.error(
-    "Could not find the 'Admin' role. Did you run the migration/seed?",
-    roleError?.message ?? "",
-  );
+if (!role) {
+  console.error("Could not find the 'Admin' role. Did you run db:push and the seed?");
   process.exit(1);
 }
 

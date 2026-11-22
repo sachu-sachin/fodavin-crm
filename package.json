@@ -19,6 +19,7 @@
     "db:deploy": "dotenv -e .env.local -- prisma migrate deploy",
     "db:seed": "tsc src/lib/permissions.ts --outDir .seed-build --module es2022 --target es2022 --moduleResolution bundler --skipLibCheck && dotenv -e .env.local -- node prisma/seed.mjs",
     "db:studio": "dotenv -e .env.local -- prisma studio",
+    "roles:add-missing": "tsc src/lib/permissions.ts --outDir .seed-build --module es2022 --target es2022 --moduleResolution bundler --skipLibCheck && dotenv -e .env.test.local -- node scripts/add-missing-roles.mjs",
     "db:setup": "dotenv -e .env.local -- prisma db execute --schema prisma/schema.prisma --file supabase/setup.sql"
   },
   "prisma": {

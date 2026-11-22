@@ -62,6 +62,7 @@ function signedIn(roleId: string | null, userId = "user-1") {
   vi.mocked(getSessionProfile).mockResolvedValue({
     userId,
     profile: { role_id: roleId },
+    roleIds: roleId ? [roleId] : [],
     isAdmin: false,
     permissions: new Set(),
   } as never);
