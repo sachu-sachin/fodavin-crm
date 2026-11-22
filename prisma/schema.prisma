@@ -167,20 +167,54 @@ enum PostCategory {
   testimonial
 }
 
+/// One day's attendance status, as in the attendance register. Leave types
+/// are statuses too, so a day is exactly one of these.
+enum AttendanceStatus {
+  present
+  absent
+  half_day
+  work_from_home
+  on_duty
+  weekly_off
+  holiday
+  casual_leave
+  sick_leave
+  earned_leave
+  unpaid_leave
+  comp_off
+  other_leave
+}
+
+enum LeaveType {
+  casual
+  sick
+  earned
+  unpaid
+  comp_off
+  other
+}
+
+enum LeaveStatus {
+  pending
+  approved
+  rejected
+  cancelled
+}
+
 // -- Models -------------------------------------------------------------------
 
 model Role {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String    @unique
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String        @unique
   /// Super-flag: implies every permission, regardless of the array below.
   /// Guarantees a way back in if a role's permissions are mis-edited.
-  is_admin    Boolean   @default(false)
+  is_admin      Boolean       @default(false)
   /// Granted permission strings — see src/lib/permissions.ts for the
   /// catalogue. Unknown values are ignored when the set is expanded.
-  permissions String[]  @default([])
-  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  permissions   String[]      @default([])
+  created_at    DateTime      @default(now()) @db.Timestamptz(6)
   /// People with this as their main role.
-  profiles    Profile[]
+  profiles      Profile[]
   /// People holding it as an additional role.
   extra_holders ProfileRole[]
 
@@ -206,18 +240,18 @@ model ProfileRole {
 
 /// 1:1 with auth.users (FK added in supabase/setup.sql).
 model Profile {
-  id           String   @id @db.Uuid
-  full_name    String?
-  email        String?
-  avatar_url   String?
-  role_id      String?  @db.Uuid
-  is_active    Boolean  @default(true)
+  id            String   @id @db.Uuid
+  full_name     String?
+  email         String?
+  avatar_url    String?
+  role_id       String?  @db.Uuid
+  is_active     Boolean  @default(true)
   /// Receive the daily reminder email. Each person can switch it off.
-  email_digest Boolean  @default(true)
+  email_digest  Boolean  @default(true)
   /// Their managing lead. Leads look after attendance, tasks and daily
   /// reports for the people who report to them.
-  reports_to_id String? @db.Uuid
-  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  reports_to_id String?  @db.Uuid
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
 
   role               Role?              @relation(fields: [role_id], references: [id], onDelete: SetNull)
   extra_roles        ProfileRole[]
@@ -231,6 +265,8 @@ model Profile {
   /// This person's own onboarding (at most one).
   onboarding         Onboarding?        @relation("OnboardingEmployee")
   digests            DigestLog[]
+  attendance         Attendance[]       @relation("AttendanceOf")
+  leave_requests     LeaveRequest[]     @relation("LeaveOf")
 
   @@index([role_id])
   @@index([reports_to_id])
@@ -695,4 +731,89 @@ model SocialPost {
   @@index([assignee_id])
   @@index([scheduled_at])
   @@map("social_posts")
+}
+
+/// One person's attendance on one IST day: check-in/out times and the day's
+/// status. Members check themselves in and out; their lead (or an admin)
+/// sets the status, corrects times and adds remarks. One row per person per
+/// day, so every edit is an upsert.
+model Attendance {
+  id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id String            @db.Uuid
+  work_date  DateTime          @db.Date
+  check_in   DateTime?         @db.Timestamptz(6)
+  check_out  DateTime?         @db.Timestamptz(6)
+  /// Unset with a check-in counts as present.
+  status     AttendanceStatus?
+  remarks    String?
+  /// Set when the leave approval wrote this day, so cancelling that leave
+  /// can undo exactly its own days.
+  leave_id   String?           @db.Uuid
+  /// Who last set the status or times by hand (a lead or admin).
+  marked_by  String?           @db.Uuid
+  created_at DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at DateTime          @default(now()) @db.Timestamptz(6)
+
+  profile Profile       @relation("AttendanceOf", fields: [profile_id], references: [id], onDelete: Cascade)
+  leave   LeaveRequest? @relation(fields: [leave_id], references: [id], onDelete: SetNull)
+
+  @@unique([profile_id, work_date])
+  @@index([work_date])
+  @@index([leave_id])
+  @@map("attendance")
+}
+
+/// A leave request. The person's lead (or an admin) approves it; approval
+/// marks the working days in the range with the matching leave status.
+model LeaveRequest {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id    String      @db.Uuid
+  type          LeaveType   @default(casual)
+  start_date    DateTime    @db.Date
+  end_date      DateTime    @db.Date
+  /// A half day; only meaningful for single-day leave.
+  half_day      Boolean     @default(false)
+  reason        String?
+  status        LeaveStatus @default(pending)
+  decided_by    String?     @db.Uuid
+  decided_at    DateTime?   @db.Timestamptz(6)
+  decision_note String?
+  created_at    DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime    @default(now()) @db.Timestamptz(6)
+
+  profile Profile      @relation("LeaveOf", fields: [profile_id], references: [id], onDelete: Cascade)
+  days    Attendance[]
+
+  @@index([profile_id])
+  @@index([status])
+  @@map("leave_requests")
+}
+
+/// A public holiday or office closure. Not counted as a working day.
+model Holiday {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date       DateTime @unique @db.Date
+  name       String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("holidays")
+}
+
+/// Office hours and attendance rules. One row, ever (`singleton`). Missing
+/// row means the defaults below.
+model WorkSettings {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  singleton          Boolean  @unique @default(true)
+  /// "HH:mm", IST.
+  shift_start        String   @default("09:00")
+  shift_end          String   @default("18:00")
+  /// Minutes after shift_start before a check-in counts as late.
+  late_grace_minutes Int      @default(10)
+  /// Hours beyond this in a day count as overtime.
+  standard_hours     Decimal  @default(8) @db.Decimal(4, 2)
+  /// Days off each week, 0 = Sunday … 6 = Saturday.
+  weekly_offs        Int[]    @default([0])
+  updated_at         DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("work_settings")
 }

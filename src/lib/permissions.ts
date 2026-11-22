@@ -43,6 +43,10 @@ export const PERMISSIONS = [
   "timesheet.view_all",
   "timesheet.manage_all",
 
+  "attendance.manage_team",
+  "attendance.view_all",
+  "attendance.manage_all",
+
   "social.view",
   "social.manage",
 
@@ -220,6 +224,30 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    key: "attendance",
+    label: "Attendance & leave",
+    description:
+      "Everyone can check in, check out, see their own attendance and request leave.",
+    permissions: [
+      {
+        value: "attendance.manage_team",
+        label: "Mark attendance and approve leave for their team",
+        hint: "Only for the people who report to them (set on the Employees page).",
+      },
+      {
+        value: "attendance.view_all",
+        label: "View everyone's attendance",
+        sensitive: true,
+      },
+      {
+        value: "attendance.manage_all",
+        label: "Manage everyone's attendance and leave",
+        hint: "Also sets office hours, weekly offs and holidays.",
+        sensitive: true,
+      },
+    ],
+  },
+  {
     key: "social",
     label: "Social & content",
     description: "The content calendar and workflow board.",
@@ -274,6 +302,7 @@ const IMPLIES: Partial<Record<Permission, Permission[]>> = {
   "documents.delete": ["documents.view"],
   "timesheet.manage_all": ["timesheet.view_all", "timesheet.log"],
   "timesheet.view_all": ["timesheet.log"],
+  "attendance.manage_all": ["attendance.view_all", "attendance.manage_team"],
   "social.manage": ["social.view"],
   "employees.manage": ["team.view"],
 };
@@ -329,6 +358,7 @@ export const ROLE_TEMPLATES: {
       "finance.view", "finance.manage",
       "documents.view", "documents.upload", "documents.delete",
       "timesheet.log", "timesheet.view_all", "timesheet.manage_all",
+      "attendance.manage_team",
       "social.view", "social.manage",
       "team.view",
     ],
@@ -415,6 +445,7 @@ export const ROLE_TEMPLATES: {
       "onboarding.view",
       "documents.view", "documents.upload",
       "timesheet.log",
+      "attendance.manage_team",
       "social.view",
       "team.view",
     ],
@@ -457,6 +488,7 @@ export const ROLE_TEMPLATES: {
       "finance.view", "finance.manage",
       "documents.view", "documents.upload",
       "timesheet.log", "timesheet.view_all",
+      "attendance.view_all",
       "team.view",
     ],
   },

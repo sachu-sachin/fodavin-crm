@@ -56,8 +56,8 @@ test.describe("Roles (admin)", () => {
 
     await page.reload();
     const reopened = page.locator(".rounded-xl", { hasText: roleName }).first();
-    // The Accounts template grants 9 permissions (see permissions.ts).
-    await expect(reopened.getByText("9 permissions")).toBeVisible();
+    // The Accounts template grants 10 permissions (see permissions.ts).
+    await expect(reopened.getByText("10 permissions")).toBeVisible();
 
     await reopened.getByRole("button", { name: "Delete" }).click();
     await page.getByRole("button", { name: "Delete role" }).click();
