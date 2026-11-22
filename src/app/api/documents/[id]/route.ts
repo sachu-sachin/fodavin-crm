@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionProfile } from "@/lib/auth";
+import { can, getSessionProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DOCUMENTS_BUCKET } from "@/lib/storage";
 
@@ -21,6 +21,11 @@ export async function GET(
   const session = await getSessionProfile();
   if (!session) {
     return NextResponse.redirect(new URL("/login", _request.nextUrl));
+  }
+  // Signed in isn't enough: opening files needs the documents permission,
+  // the same as seeing them listed.
+  if (!can(session, "documents.view")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -45,7 +50,9 @@ export async function GET(
   const { data, error } = await admin.storage
     .from(DOCUMENTS_BUCKET)
     .createSignedUrl(doc.storage_path, SIGNED_URL_TTL_SECONDS, {
-      download: doc.name,
+      // The download filename goes into a header: non-ASCII characters
+      // (a "–", a Tamil name) make signing fail, so swap them out.
+      download: doc.name.replace(/[^ -~]/g, "_"),
     });
 
   if (error || !data) {

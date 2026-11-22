@@ -4,9 +4,13 @@
 export type InquiryStage =
   | "new"
   | "contacted"
+  | "interested"
+  | "follow_up"
   | "proposal_sent"
+  | "negotiation"
   | "won"
-  | "lost";
+  | "lost"
+  | "not_interested";
 
 export type InquiryType =
   | "website"
@@ -173,6 +177,10 @@ export interface Inquiry {
   next_follow_up: string | null;
   lost_reason: string | null;
   notes: string | null;
+  /** Who chases it (usually a Business Executive). */
+  owner_id: string | null;
+  phone: string | null;
+  email: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -386,10 +394,17 @@ export interface SocialPost {
 export const INQUIRY_STAGES: { value: InquiryStage; label: string }[] = [
   { value: "new", label: "New" },
   { value: "contacted", label: "Contacted" },
+  { value: "interested", label: "Interested" },
+  { value: "follow_up", label: "Follow-up" },
   { value: "proposal_sent", label: "Proposal Sent" },
+  { value: "negotiation", label: "Negotiation" },
   { value: "won", label: "Won" },
   { value: "lost", label: "Lost" },
+  { value: "not_interested", label: "Not interested" },
 ];
+
+/** Stages where a lead is finished: nothing left to chase. */
+export const CLOSED_INQUIRY_STAGES: InquiryStage[] = ["won", "lost", "not_interested"];
 
 export const INQUIRY_SOURCES: { value: InquirySource; label: string }[] = [
   { value: "referral", label: "Referral" },
@@ -416,7 +431,10 @@ export const INQUIRY_TYPES: { value: InquiryType; label: string }[] = [
 export const OPEN_INQUIRY_STAGES: InquiryStage[] = [
   "new",
   "contacted",
+  "interested",
+  "follow_up",
   "proposal_sent",
+  "negotiation",
 ];
 
 export const PROJECT_TYPES: { value: ProjectType; label: string }[] = [

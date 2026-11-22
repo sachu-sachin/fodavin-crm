@@ -62,7 +62,7 @@ export default async function DashboardPage() {
     teamReportsToday,
   ] = await Promise.all([
     prisma.company.count(),
-    prisma.inquiry.count({ where: { stage: { notIn: ["won", "lost"] } } }),
+    prisma.inquiry.count({ where: { stage: { in: OPEN_INQUIRY_STAGES } } }),
     prisma.project.count({ where: { status: "active" } }),
     prisma.task.count({ where: { status: { not: "done" } } }),
     prisma.inquiry.findMany({

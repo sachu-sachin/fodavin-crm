@@ -10,7 +10,8 @@ import { ContactsSection } from "@/components/contacts-section";
 import { DocumentsSection } from "@/components/documents-section";
 import { DeleteEntityButton } from "@/components/delete-entity-button";
 import { getConnectedAccount } from "@/lib/google/drive";
-import { istToday } from "@/lib/format";
+import { formatDateTimeIST, istToday } from "@/lib/format";
+import { CALL_OUTCOME_LABELS } from "@/lib/calls";
 import { MEETING_LIST_SELECT, toMeetingListItem } from "@/lib/meetings";
 import { MeetingsCard } from "@/components/meetings-card";
 import { SUPABASE_MAX_BYTES } from "@/lib/google/config";
@@ -149,6 +150,10 @@ export default async function CompanyDetailPage({
             supabaseMaxBytes={SUPABASE_MAX_BYTES}
           />
 
+          {can(session, "pipeline.view") && (
+            <CompanyCalls companyId={company.id} />
+          )}
+
           {showMeetings && (
             <MeetingsCard
               meetings={meetings.map(toMeetingListItem)}
@@ -255,5 +260,59 @@ function Detail({
       </p>
       <div className="mt-0.5">{children}</div>
     </div>
+  );
+}
+
+/** Calls with this client's leads, newest first (recordings play inline). */
+async function CompanyCalls({ companyId }: { companyId: string }) {
+  const calls = await prisma.callLog.findMany({
+    where: { company_id: companyId },
+    orderBy: { called_at: "desc" },
+    take: 20,
+    select: {
+      id: true,
+      called_at: true,
+      outcome: true,
+      notes: true,
+      inquiry: { select: { id: true, title: true } },
+      recordings: { select: { id: true, name: true } },
+    },
+  });
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Calls ({calls.length})</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {calls.length === 0 && (
+          <p className="text-muted-foreground">No calls logged with this client yet.</p>
+        )}
+        {calls.map((c) => (
+          <div key={c.id} className="border-b pb-2 last:border-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">{formatDateTimeIST(c.called_at.toISOString())}</span>
+              <Badge variant="secondary">{CALL_OUTCOME_LABELS[c.outcome]}</Badge>
+              {c.inquiry && (
+                <Link className="text-primary hover:underline" href={`/pipeline/${c.inquiry.id}`}>
+                  {c.inquiry.title}
+                </Link>
+              )}
+            </div>
+            {c.notes && <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{c.notes}</p>}
+            {c.recordings.map((r) => (
+              <a
+                key={r.id}
+                className="mt-1 block text-primary hover:underline"
+                href={`/api/documents/${r.id}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                ▶ {r.name}
+              </a>
+            ))}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
