@@ -123,6 +123,20 @@ enum TaskType {
   general
 }
 
+enum TaskPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+/// A daily stand-up report: the morning plan (after the morning meeting) or
+/// the end-of-day update (after the EOD meeting).
+enum ReportKind {
+  morning
+  eod
+}
+
 enum SocialPlatform {
   instagram
   facebook
@@ -266,6 +280,7 @@ model Profile {
   onboarding         Onboarding?        @relation("OnboardingEmployee")
   digests            DigestLog[]
   attendance         Attendance[]       @relation("AttendanceOf")
+  daily_reports      DailyReport[]      @relation("ReportOf")
   leave_requests     LeaveRequest[]     @relation("LeaveOf")
 
   @@index([role_id])
@@ -391,23 +406,32 @@ model Project {
 }
 
 model Task {
-  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  project_id    String?    @db.Uuid
-  title         String
-  description   String?
-  type          TaskType   @default(general)
-  status        TaskStatus @default(todo)
-  assignee_id   String?    @db.Uuid
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id      String?      @db.Uuid
+  title           String
+  description     String?
+  type            TaskType     @default(general)
+  status          TaskStatus   @default(todo)
+  assignee_id     String?      @db.Uuid
   /// Set when the task is an action item from a meeting. Such a task may have
   /// no project (an internal meeting); it still lives on the normal boards.
-  meeting_id    String?    @db.Uuid
+  meeting_id      String?      @db.Uuid
   /// Set when the task is an item on someone's onboarding checklist.
-  onboarding_id String?    @db.Uuid
-  position      Int        @default(0)
-  due_date      DateTime?  @db.Date
-  created_by    String?    @db.Uuid
-  created_at    DateTime   @default(now()) @db.Timestamptz(6)
-  updated_at    DateTime   @default(now()) @db.Timestamptz(6)
+  onboarding_id   String?      @db.Uuid
+  priority        TaskPriority @default(medium)
+  /// Free-text stream of work, e.g. "Meta Ads", "SEO", "Editing".
+  workstream      String?
+  /// Time the lead allows for it, and the time it actually took.
+  allocated_hours Decimal?     @db.Decimal(5, 2)
+  actual_hours    Decimal?     @db.Decimal(5, 2)
+  /// Set when it first moves to In progress / to Done (cleared if reopened).
+  started_at      DateTime?    @db.Timestamptz(6)
+  completed_at    DateTime?    @db.Timestamptz(6)
+  position        Int          @default(0)
+  due_date        DateTime?    @db.Date
+  created_by      String?      @db.Uuid
+  created_at      DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime     @default(now()) @db.Timestamptz(6)
 
   project    Project?    @relation(fields: [project_id], references: [id], onDelete: Cascade)
   assignee   Profile?    @relation("TaskAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
@@ -813,7 +837,41 @@ model WorkSettings {
   standard_hours     Decimal  @default(8) @db.Decimal(4, 2)
   /// Days off each week, 0 = Sunday … 6 = Saturday.
   weekly_offs        Int[]    @default([0])
+  /// Daily meetings, "HH:mm" IST: the morning plan is due after the first,
+  /// the end-of-day report after the second.
+  morning_meeting    String   @default("09:30")
+  eod_meeting        String   @default("17:30")
   updated_at         DateTime @default(now()) @db.Timestamptz(6)
 
   @@map("work_settings")
+}
+
+/// One person's morning plan or end-of-day report for one IST day. Re-saving
+/// the same day's report edits it (one row per person, day and kind).
+model DailyReport {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id   String     @db.Uuid
+  report_date  DateTime   @db.Date
+  kind         ReportKind
+  /// Morning: today's plan.
+  plan         String?
+  /// EOD: what got done, what's pending (and why), and blockers.
+  completed    String?
+  pending      String?
+  blockers     String?
+  /// Morning: the tasks picked for today.
+  task_ids     String[]   @default([]) @db.Uuid
+  /// First submission time (later edits don't move it).
+  submitted_at DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime   @default(now()) @db.Timestamptz(6)
+  /// The lead's comment.
+  review_note  String?
+  reviewed_by  String?    @db.Uuid
+  reviewed_at  DateTime?  @db.Timestamptz(6)
+
+  profile Profile @relation("ReportOf", fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@unique([profile_id, report_date, kind])
+  @@index([report_date])
+  @@map("daily_reports")
 }

@@ -32,13 +32,22 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   );
 }
 
-export function AppSidebar({ permissions }: { permissions: string[] }) {
+export function AppSidebar({
+  permissions,
+  hiddenHrefs = [],
+}: {
+  permissions: string[];
+  /** Links switched off for this person regardless of permissions. */
+  hiddenHrefs?: string[];
+}) {
   const pathname = usePathname();
 
   // The nav is a convenience, not the access boundary — every page and action
   // re-checks server-side. This just avoids showing links that dead-end.
   const held = new Set(permissions);
-  const visible = (item: NavItem) => !item.permission || held.has(item.permission);
+  const hidden = new Set(hiddenHrefs);
+  const visible = (item: NavItem) =>
+    !hidden.has(item.href) && (!item.permission || held.has(item.permission));
   const mainItems = NAV_ITEMS.filter(visible);
   const adminItems = ADMIN_NAV_ITEMS.filter(visible);
 

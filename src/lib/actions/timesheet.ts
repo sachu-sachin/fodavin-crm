@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { can, DENIED_MESSAGE, getSessionProfile, type SessionProfile } from "@/lib/auth";
+import {
+  can,
+  DENIED_MESSAGE,
+  getSessionProfile,
+  TIMESHEET_OFF_MESSAGE,
+  timesheetOff,
+  type SessionProfile,
+} from "@/lib/auth";
 import { MAX_HOURS_PER_DAY } from "@/lib/types";
 
 export type TimesheetState = { error?: string; success?: string };
@@ -23,6 +30,7 @@ function resolveTarget(session: SessionProfile, requestedProfileId?: string): st
     if (!can(session, "timesheet.log")) {
       throw new Error(DENIED_MESSAGE);
     }
+    if (timesheetOff(session)) throw new Error(TIMESHEET_OFF_MESSAGE);
     return session.userId;
   }
   // Editing someone else's sheet is a separate, higher permission.

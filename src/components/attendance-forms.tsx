@@ -246,7 +246,11 @@ export function WorkSettingsForm({
   grace,
   hours,
   weeklyOffs,
+  morningMeeting,
+  eodMeeting,
 }: {
+  morningMeeting: string;
+  eodMeeting: string;
   shiftStart: string;
   shiftEnd: string;
   grace: number;
@@ -265,6 +269,14 @@ export function WorkSettingsForm({
         <div className="space-y-1">
           <Label htmlFor="shift_end">Office ends</Label>
           <Input id="shift_end" name="shift_end" type="time" defaultValue={shiftEnd} required />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="morning_meeting">Morning meeting</Label>
+          <Input id="morning_meeting" name="morning_meeting" type="time" defaultValue={morningMeeting} />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="eod_meeting">End-of-day meeting</Label>
+          <Input id="eod_meeting" name="eod_meeting" type="time" defaultValue={eodMeeting} />
         </div>
         <div className="space-y-1">
           <Label htmlFor="late_grace_minutes">Late after (minutes of grace)</Label>

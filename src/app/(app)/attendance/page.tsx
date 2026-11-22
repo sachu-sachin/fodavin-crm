@@ -495,6 +495,8 @@ async function SettingsTab({ rules, today }: { rules: WorkRules; today: string }
             grace={rules.lateGraceMinutes}
             hours={rules.standardHours}
             weeklyOffs={rules.weeklyOffs}
+            morningMeeting={rules.morningMeeting}
+            eodMeeting={rules.eodMeeting}
           />
         </CardContent>
       </Card>

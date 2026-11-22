@@ -113,6 +113,18 @@ export async function requirePermission(
 export const DENIED_MESSAGE = "You don't have permission to do that.";
 
 /**
+ * The timesheet is switched off for anyone who reports to a managing lead:
+ * their work is tracked through tasks and daily reports instead. (It can be
+ * switched back on later, e.g. with a separate timesheet app.)
+ */
+export function timesheetOff(session: SessionProfile | null): boolean {
+  return !!session?.profile?.reports_to_id;
+}
+
+export const TIMESHEET_OFF_MESSAGE =
+  "Your timesheet is switched off: your lead follows your work through tasks and daily reports.";
+
+/**
  * Server-action guard. Redirects if signed out; returns null if the session
  * lacks the permission, so callers can no-op or return an error uniformly.
  *

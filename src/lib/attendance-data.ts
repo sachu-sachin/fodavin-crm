@@ -13,6 +13,8 @@ export async function getWorkRules(): Promise<WorkRules> {
     lateGraceMinutes: row.late_grace_minutes,
     standardHours: Number(row.standard_hours),
     weeklyOffs: row.weekly_offs,
+    morningMeeting: row.morning_meeting,
+    eodMeeting: row.eod_meeting,
   };
 }
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { toTaskDTO } from "@/lib/task-dto";
 import { can, getSessionProfile } from "@/lib/auth";
 import type { Task } from "@/lib/types";
 import { formatDateKey, istToday } from "@/lib/format";
@@ -50,12 +51,7 @@ export default async function OnboardingDetailPage({
 
   const name =
     onboarding.profile.full_name || onboarding.profile.email?.split("@")[0] || "User";
-  const tasks: Task[] = onboarding.tasks.map((t) => ({
-    ...t,
-    due_date: dateStr(t.due_date),
-    created_at: t.created_at.toISOString(),
-    updated_at: t.updated_at.toISOString(),
-  }));
+  const tasks: Task[] = onboarding.tasks.map(toTaskDTO);
   const done = tasks.filter((t) => t.status === "done").length;
 
   return (

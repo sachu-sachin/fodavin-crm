@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getSessionProfile, requirePermission } from "@/lib/auth";
+import { getSessionProfile, requirePermission, timesheetOff } from "@/lib/auth";
 import {
   addDays,
   currentWeekStart,
@@ -33,6 +33,8 @@ export default async function TimesheetPage({
   await requirePermission("timesheet.log");
   const session = await getSessionProfile();
   if (!session) redirect("/login");
+  // Off for people with a managing lead; they use daily reports instead.
+  if (timesheetOff(session)) redirect("/reports");
 
   const params = await searchParams;
   const weekStart = normaliseWeekParam(

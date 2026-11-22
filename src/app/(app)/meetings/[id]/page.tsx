@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { toTaskDTO } from "@/lib/task-dto";
 import { can, requirePermission } from "@/lib/auth";
 import { MEETING_TYPES, type Meeting, type Task } from "@/lib/types";
 import { formatDateTimeIST, istToday } from "@/lib/format";
@@ -17,7 +18,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
-const dateStr = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
 const typeLabel = (v: string) =>
   MEETING_TYPES.find((t) => t.value === v)?.label ?? v;
@@ -103,12 +103,7 @@ export default async function MeetingDetailPage({
     updated_at: meeting.updated_at.toISOString(),
   };
 
-  const actionItems: Task[] = meeting.action_items.map((t) => ({
-    ...t,
-    due_date: dateStr(t.due_date),
-    created_at: t.created_at.toISOString(),
-    updated_at: t.updated_at.toISOString(),
-  }));
+  const actionItems: Task[] = meeting.action_items.map(toTaskDTO);
 
   const duration = durationLabel(meeting.duration_minutes);
   const isLink = meeting.location != null && /^https?:\/\//i.test(meeting.location);

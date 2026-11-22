@@ -40,6 +40,7 @@ export default async function globalTeardown() {
     if (fixture) {
       await prisma.attendance.deleteMany({ where: { profile_id: fixture.id } });
       await prisma.leaveRequest.deleteMany({ where: { profile_id: fixture.id } });
+      await prisma.dailyReport.deleteMany({ where: { profile_id: fixture.id } });
     }
 
     // Employees are Supabase Auth users first, profiles second (a DB trigger

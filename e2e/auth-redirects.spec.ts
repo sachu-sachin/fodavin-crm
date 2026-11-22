@@ -11,6 +11,7 @@ const PROTECTED_ROUTES = [
   "/",
   "/announcements",
   "/attendance",
+  "/reports",
   "/crm",
   "/pipeline",
   "/projects",
