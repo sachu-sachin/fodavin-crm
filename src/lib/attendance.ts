@@ -116,6 +116,8 @@ export interface WorkRules {
   /** Daily meetings, "HH:mm" IST: morning plan after the first, EOD report after the second. */
   morningMeeting: string;
   eodMeeting: string;
+  /** Calls a Business Executive aims for each day. */
+  dailyCallTarget: number;
 }
 
 /** Defaults from the old workbook's settings sheet. */
@@ -127,6 +129,7 @@ export const DEFAULT_RULES: WorkRules = {
   weeklyOffs: [0],
   morningMeeting: "09:30",
   eodMeeting: "17:30",
+  dailyCallTarget: 60,
 };
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;

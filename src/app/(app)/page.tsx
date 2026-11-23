@@ -60,6 +60,7 @@ export default async function DashboardPage() {
     myAttendanceToday,
     myReportsToday,
     teamReportsToday,
+    myCallsToday,
   ] = await Promise.all([
     prisma.company.count(),
     prisma.inquiry.count({ where: { stage: { in: OPEN_INQUIRY_STAGES } } }),
@@ -191,6 +192,11 @@ export default async function DashboardPage() {
           },
         })
       : [],
+    can(session, "pipeline.manage")
+      ? prisma.callLog.count({
+          where: { logged_by: session.userId, called_at: { gte: startOfToday, lte: endOfToday } },
+        })
+      : null,
   ]);
 
   const onboardingOpen = myOnboarding?.tasks.filter((t) => t.status !== "done") ?? [];
@@ -269,6 +275,12 @@ export default async function DashboardPage() {
                 </div>
               );
             })}
+            {myCallsToday != null && (
+              <Link href="/pipeline/calls" className="flex items-center justify-between pt-1 hover:underline">
+                <span>Calls today</span>
+                <span className="font-medium">{myCallsToday} → Call list</span>
+              </Link>
+            )}
             {teamReportsToday.length > 0 && (
               <Link href="/reports?tab=team" className="block pt-1 text-muted-foreground hover:underline">
                 Your team today: morning{" "}

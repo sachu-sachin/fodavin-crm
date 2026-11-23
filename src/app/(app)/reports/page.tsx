@@ -8,6 +8,7 @@ import { hhmmToMinutes, istMinutesOfDay } from "@/lib/attendance";
 import { getWorkRules } from "@/lib/attendance-data";
 import { reviewablePeople } from "@/lib/reports-data";
 import { hoursVariance, PRIORITY_LABELS } from "@/lib/task-timing";
+import { callSummaryLine, callTally } from "@/lib/call-list";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -87,7 +88,7 @@ export default async function ReportsPage({
 }
 
 async function MyReports({ userId, today }: { userId: string; today: string }) {
-  const [openTasks, reports] = await Promise.all([
+  const [openTasks, reports, callsToday] = await Promise.all([
     prisma.task.findMany({
       where: { assignee_id: userId, status: { not: "done" } },
       select: {
@@ -103,7 +104,15 @@ async function MyReports({ userId, today }: { userId: string; today: string }) {
       where: { profile_id: userId, report_date: { gte: dbDate(addDays(today, -14)) } },
       orderBy: [{ report_date: "desc" }, { kind: "asc" }],
     }),
+    prisma.callLog.findMany({
+      where: {
+        logged_by: userId,
+        called_at: { gte: new Date(`${today}T00:00:00${IST}`), lte: new Date(`${today}T23:59:59${IST}`) },
+      },
+      select: { outcome: true },
+    }),
   ]);
+  const callLine = callSummaryLine(callTally(callsToday.map((c) => c.outcome)));
   const pick: PickTask[] = openTasks.map((t) => ({
     id: t.id,
     title: t.title,
@@ -138,7 +147,9 @@ async function MyReports({ userId, today }: { userId: string; today: string }) {
           <CardContent>
             <EodReportForm
               tasks={eodTasks}
-              completed={eod?.completed ?? ""}
+              // Calls made today start the report, so the lead sees them
+              // without anyone typing the numbers in.
+              completed={eod?.completed ?? callLine}
               pendingText={eod?.pending ?? ""}
               blockers={eod?.blockers ?? ""}
               submitted={!!eod}
@@ -185,7 +196,7 @@ async function TeamReports({
   const ids = people.map((p) => p.id);
   const dayStart = new Date(`${date}T00:00:00${IST}`);
   const dayEnd = new Date(`${date}T23:59:59${IST}`);
-  const [reports, doneToday, openCounts] = await Promise.all([
+  const [reports, doneToday, openCounts, dayCalls] = await Promise.all([
     prisma.dailyReport.findMany({ where: { profile_id: { in: ids }, report_date: dbDate(date) } }),
     prisma.task.findMany({
       where: { assignee_id: { in: ids }, completed_at: { gte: dayStart, lte: dayEnd } },
@@ -196,7 +207,13 @@ async function TeamReports({
       where: { assignee_id: { in: ids }, status: { not: "done" } },
       _count: true,
     }),
+    prisma.callLog.findMany({
+      where: { logged_by: { in: ids }, called_at: { gte: dayStart, lte: dayEnd } },
+      select: { logged_by: true, outcome: true },
+    }),
   ]);
+  const callLineOf = (id: string) =>
+    callSummaryLine(callTally(dayCalls.filter((c) => c.logged_by === id).map((c) => c.outcome)));
   const plannedIds = [...new Set(reports.flatMap((r) => r.task_ids))];
   const plannedTasks = plannedIds.length
     ? await prisma.task.findMany({ where: { id: { in: plannedIds } }, select: { id: true, title: true, status: true } })
@@ -239,6 +256,7 @@ async function TeamReports({
               <CardTitle className="text-base">{p.name}</CardTitle>
               <span className="text-xs text-muted-foreground">
                 {open.get(p.id) ?? 0} open task(s) · {done.length} finished this day
+                {callLineOf(p.id) && <> · {callLineOf(p.id).replace("Calls today", "calls")}</>}
               </span>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">

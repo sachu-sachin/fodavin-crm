@@ -248,9 +248,11 @@ export function WorkSettingsForm({
   weeklyOffs,
   morningMeeting,
   eodMeeting,
+  dailyCallTarget,
 }: {
   morningMeeting: string;
   eodMeeting: string;
+  dailyCallTarget: number;
   shiftStart: string;
   shiftEnd: string;
   grace: number;
@@ -277,6 +279,10 @@ export function WorkSettingsForm({
         <div className="space-y-1">
           <Label htmlFor="eod_meeting">End-of-day meeting</Label>
           <Input id="eod_meeting" name="eod_meeting" type="time" defaultValue={eodMeeting} />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="daily_call_target">Daily call target (Business Executives)</Label>
+          <Input id="daily_call_target" name="daily_call_target" type="number" min={0} max={500} defaultValue={dailyCallTarget} />
         </div>
         <div className="space-y-1">
           <Label htmlFor="late_grace_minutes">Late after (minutes of grace)</Label>

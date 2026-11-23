@@ -15,6 +15,7 @@ export async function getWorkRules(): Promise<WorkRules> {
     weeklyOffs: row.weekly_offs,
     morningMeeting: row.morning_meeting,
     eodMeeting: row.eod_meeting,
+    dailyCallTarget: row.daily_call_target,
   };
 }
 

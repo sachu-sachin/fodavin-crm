@@ -288,6 +288,7 @@ export async function saveWorkSettings(
   const shiftEnd = String(formData.get("shift_end") ?? "");
   const morning = String(formData.get("morning_meeting") ?? "") || "09:30";
   const eod = String(formData.get("eod_meeting") ?? "") || "17:30";
+  const callTarget = Number(formData.get("daily_call_target") ?? 60);
   const grace = Number(formData.get("late_grace_minutes"));
   const hours = Number(formData.get("standard_hours"));
   const offs = [
@@ -308,6 +309,9 @@ export async function saveWorkSettings(
   if (!Number.isInteger(grace) || grace < 0 || grace > 180) {
     return { error: "Grace period must be 0–180 minutes." };
   }
+  if (!Number.isInteger(callTarget) || callTarget < 0 || callTarget > 500) {
+    return { error: "Daily call target must be 0–500." };
+  }
   if (!Number.isFinite(hours) || hours <= 0 || hours > 16) {
     return { error: "Standard hours must be between 0 and 16." };
   }
@@ -320,6 +324,7 @@ export async function saveWorkSettings(
     weekly_offs: offs,
     morning_meeting: morning,
     eod_meeting: eod,
+    daily_call_target: callTarget,
   };
   await prisma.workSettings.upsert({
     where: { singleton: true },

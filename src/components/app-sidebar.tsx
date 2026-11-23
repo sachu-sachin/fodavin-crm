@@ -51,8 +51,14 @@ export function AppSidebar({
   const mainItems = NAV_ITEMS.filter(visible);
   const adminItems = ADMIN_NAV_ITEMS.filter(visible);
 
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+  // The most specific link wins, so /pipeline/calls lights up "Call list"
+  // rather than both it and "Pipeline".
+  const matches = (href: string) =>
+    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+  const best = [...mainItems, ...adminItems]
+    .filter((i) => matches(i.href))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+  const isActive = (href: string) => href === best;
 
   return (
     <aside className="hidden w-60 shrink-0 border-r bg-card md:flex md:flex-col">
