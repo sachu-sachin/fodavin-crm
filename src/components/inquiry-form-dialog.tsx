@@ -112,8 +112,16 @@ export function InquiryFormDialog({
     startTransition(async () => {
       const fd = new FormData();
       fd.set("id", inquiry.id);
-      // Redirects to the new project on success.
-      await convertInquiryToProject(fd);
+      // Opens the new project when the user can see projects; otherwise
+      // says it's done. Either way, never silent.
+      const res = await convertInquiryToProject(fd);
+      if (res?.error) setError(res.error);
+      else if (res?.success) {
+        toast.success(res.success);
+        setError(undefined);
+        markClean();
+        setOpen(false);
+      }
     });
   }
 
