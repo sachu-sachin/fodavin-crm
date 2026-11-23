@@ -497,6 +497,7 @@ async function SettingsTab({ rules, today }: { rules: WorkRules; today: string }
             weeklyOffs={rules.weeklyOffs}
             morningMeeting={rules.morningMeeting}
             eodMeeting={rules.eodMeeting}
+            dailyCallTarget={rules.dailyCallTarget}
           />
         </CardContent>
       </Card>
