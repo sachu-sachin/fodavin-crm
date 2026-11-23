@@ -16,6 +16,7 @@ export const PERMISSIONS = [
   "pipeline.view",
   "pipeline.manage",
   "pipeline.delete",
+  "pipeline.convert",
 
   "projects.view",
   "projects.manage",
@@ -112,6 +113,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
       { value: "pipeline.manage", label: "Add, edit and move inquiries" },
       { value: "pipeline.delete", label: "Delete inquiries" },
+      {
+        value: "pipeline.convert",
+        label: "Convert won leads into projects",
+        hint: "Creates that lead's project for delivery. Doesn't open up the Projects module.",
+      },
     ],
   },
   {
@@ -309,6 +315,7 @@ const IMPLIES: Partial<Record<Permission, Permission[]>> = {
   "clients.delete": ["clients.view", "clients.manage"],
   "pipeline.manage": ["pipeline.view"],
   "pipeline.delete": ["pipeline.view", "pipeline.manage"],
+  "pipeline.convert": ["pipeline.view", "pipeline.manage"],
   "projects.manage": ["projects.view"],
   "projects.delete": ["projects.view", "projects.manage"],
   "tasks.manage": ["tasks.view"],
@@ -367,7 +374,7 @@ export const ROLE_TEMPLATES: {
     summary: "Runs delivery and client relationships, including money.",
     permissions: [
       "clients.view", "clients.manage",
-      "pipeline.view", "pipeline.manage", "pipeline.delete",
+      "pipeline.view", "pipeline.manage", "pipeline.delete", "pipeline.convert",
       "projects.view", "projects.manage",
       "tasks.view", "tasks.manage",
       "meetings.view", "meetings.manage",
@@ -476,7 +483,7 @@ export const ROLE_TEMPLATES: {
     summary: "Handles enquiries and leads: calls, follow-ups and client records.",
     permissions: [
       "clients.view", "clients.manage",
-      "pipeline.view", "pipeline.manage",
+      "pipeline.view", "pipeline.manage", "pipeline.convert",
       "meetings.view", "meetings.manage",
       "documents.view", "documents.upload",
       "timesheet.log",

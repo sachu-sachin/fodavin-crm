@@ -286,15 +286,26 @@ describe("moveInquiryStage", () => {
 });
 
 describe("convertInquiryToProject", () => {
-  it("redirects to the pipeline when the inquiry no longer exists", async () => {
-    authorized();
+  function as(perms: string[], userId = "u1") {
+    vi.mocked(authorize).mockResolvedValue({ userId, profile: null, isAdmin: false, permissions: new Set(perms) } as never);
+  }
+
+  it("says why instead of doing nothing when the role can't convert (a Business Executive without the permission)", async () => {
+    as(["pipeline.view", "pipeline.manage"]);
+    const res = await convertInquiryToProject(form({ id: "i1" }));
+    expect(res.error).toMatch(/can't turn leads into projects/);
+    expect(prisma.project.create).not.toHaveBeenCalled();
+  });
+
+  it("reports a lead that no longer exists", async () => {
+    as(["projects.manage", "projects.view"]);
     vi.mocked(prisma.inquiry.findUnique).mockResolvedValue(null);
-    await expect(convertInquiryToProject(form({ id: "gone" }))).rejects.toThrow("REDIRECT:/pipeline");
+    expect((await convertInquiryToProject(form({ id: "gone" }))).error).toMatch(/no longer exists/);
     expect(prisma.project.create).not.toHaveBeenCalled();
   });
 
   it("is idempotent: re-converting opens the already-created project instead of duplicating it", async () => {
-    authorized();
+    as(["projects.manage", "projects.view"]);
     vi.mocked(prisma.inquiry.findUnique).mockResolvedValue({ id: "i1", type: "website" } as never);
     vi.mocked(prisma.project.findFirst).mockResolvedValue({ id: "existing-project" } as never);
 
@@ -305,12 +316,12 @@ describe("convertInquiryToProject", () => {
   });
 
   it("creates the project, marks the inquiry won, and redirects to the new project", async () => {
-    authorized("u1");
+    as(["projects.manage", "projects.view"]);
     vi.mocked(prisma.inquiry.findUnique).mockResolvedValue({
       id: "i1", title: "New site", type: "ecommerce", company_id: "c1", notes: "notes", budget: 5000,
     } as never);
     vi.mocked(prisma.project.findFirst).mockResolvedValue(null);
-    vi.mocked(prisma.project.create).mockResolvedValue({ id: "new-project" } as never);
+    vi.mocked(prisma.project.create).mockResolvedValue({ id: "new-project", name: "New site" } as never);
 
     await expect(convertInquiryToProject(form({ id: "i1" }))).rejects.toThrow(
       "REDIRECT:/projects/new-project",
@@ -328,6 +339,21 @@ describe("convertInquiryToProject", () => {
       where: { id: "i1" },
       data: { stage: "won", next_follow_up: null },
     });
+  });
+
+  it("lets a Business Executive with pipeline.convert hand over a won lead, without sending them to a page they can't open", async () => {
+    as(["pipeline.view", "pipeline.manage", "pipeline.convert"], "be-1");
+    vi.mocked(prisma.inquiry.findUnique).mockResolvedValue({
+      id: "i1", title: "Billing system upgrade", type: "web_app", company_id: null, notes: null, budget: 50000,
+    } as never);
+    vi.mocked(prisma.project.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.project.create).mockResolvedValue({ id: "p9", name: "Billing system upgrade" } as never);
+
+    const res = await convertInquiryToProject(form({ id: "i1" }));
+    expect(res.success).toMatch(/Project "Billing system upgrade" created/);
+    expect(prisma.project.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: "web_app", created_by: "be-1" }) }),
+    );
   });
 });
 

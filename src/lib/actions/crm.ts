@@ -355,20 +355,39 @@ const INQUIRY_TO_PROJECT_TYPE: Record<InquiryType, ProjectType> = {
  * Convert a won inquiry into a Project, carrying over the client, work type,
  * budget and notes. Marks the inquiry as won and opens the new project.
  */
-export async function convertInquiryToProject(formData: FormData): Promise<void> {
-  const userId = await requireUserId("projects.manage");
-  if (!userId) return;
+/**
+ * Turn a won lead into a project. Allowed with projects.manage, or with
+ * pipeline.convert (a Business Executive handing a won deal to delivery
+ * without access to the Projects module). Says why when it can't, rather
+ * than doing nothing.
+ */
+export async function convertInquiryToProject(formData: FormData): Promise<CrmState> {
+  const session = await authorize("pipeline.view");
+  if (!session) return { error: DENIED_MESSAGE };
+  const has = (p: Permission) => session.isAdmin || session.permissions.has(p);
+  if (!has("projects.manage") && !has("pipeline.convert")) {
+    return {
+      error:
+        "Your role can't turn leads into projects. Ask an admin or a project manager, or give your role “Convert won leads into projects” on the Roles page.",
+    };
+  }
+  const userId = session.userId;
+  // Sent where the project is, when they can see it; otherwise told it's done.
+  const canOpen = has("projects.view");
   const id = String(formData.get("id") ?? "");
 
   const inquiry = await prisma.inquiry.findUnique({ where: { id } });
-  if (!inquiry) redirect("/pipeline");
+  if (!inquiry) return { error: "That lead no longer exists." };
 
   // An inquiry converts once. Re-running opens the project already created.
   const existing = await prisma.project.findFirst({
     where: { inquiry_id: id },
     select: { id: true },
   });
-  if (existing) redirect(`/projects/${existing.id}`);
+  if (existing) {
+    if (canOpen) redirect(`/projects/${existing.id}`);
+    return { success: "This lead already has its project." };
+  }
 
   const project = await prisma.project.create({
     data: {
@@ -390,9 +409,11 @@ export async function convertInquiryToProject(formData: FormData): Promise<void>
   });
 
   revalidatePath("/pipeline");
+  revalidatePath(`/pipeline/${id}`);
   revalidatePath("/projects");
   revalidatePath("/");
-  redirect(`/projects/${project.id}`);
+  if (canOpen) redirect(`/projects/${project.id}`);
+  return { success: `Project "${project.name}" created and the lead marked Won. The delivery team will see it under Projects.` };
 }
 
 // -- helpers ------------------------------------------------------------------
